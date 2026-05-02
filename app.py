@@ -10,14 +10,7 @@ st.sidebar.title("⚙️ Configurações")
 
 posicao_analise = st.sidebar.selectbox(
     "Qual posição vamos analisar?",
-    ['🧤Goleiros', 
-     #'🧱Zagueiros', 
-     #'🛡️Laterais', 
-     #'🛡️Volantes', 
-     #'⚙️Box-To-Box', 
-     #'⚙️Armadores', 
-     #'🎯Avançados'
-     ]
+    ['🧤Goleiros']
 )
 
 arquivo_upload = st.sidebar.file_uploader("Sua planilha (.xlsm / .xlsx)", type=["xlsx", "xlsm"])
