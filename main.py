@@ -7,7 +7,7 @@ from Funções import ahp
 
 warnings.filterwarnings("ignore")
 
-def gerar_ranking(arquivo_upload):
+def gerar_ranking(arquivo_upload, posicao_analise ):
 
     # ==========================================
     # 1. CARREGAMENTO DA PLANILHA
@@ -23,24 +23,24 @@ def gerar_ranking(arquivo_upload):
             print("Planilha carregada com sucesso!")
             print("Abas encontradas:", list(banco_de_dados.keys()))
             
-            # Pegando a aba bruta dos Goleiros
-            df_goleiros_bruto = banco_de_dados['🧤Goleiros']
+            # Pegando a aba bruta da posição selecionada
+            df_posicao_bruto = banco_de_dados[posicao_analise]
 
             # Recortando da coluna A (posição 0) até a CK (posição 89, limite exclusivo)
-            df_goleiros_limpo = df_goleiros_bruto.iloc[:, 0:89]
+            df_posicao_limpo = df_posicao_bruto.iloc[:, 0:89]
 
             # Limpando linhas vazias na primeira coluna
-            df_goleiros_limpo = df_goleiros_limpo.dropna(subset=[df_goleiros_limpo.columns[0]])
+            df_posicao_limpo = df_posicao_limpo.dropna(subset=[df_posicao_limpo.columns[0]])
 
-            print(f"\nTabela limpa! Ficamos com {df_goleiros_limpo.shape[0]} jogadores e {df_goleiros_limpo.shape[1]} colunas.")
-            print(df_goleiros_limpo.head())
+            print(f"\nTabela limpa! Ficamos com {df_posicao_limpo.shape[0]} jogadores e {df_posicao_limpo.shape[1]} colunas.")
+            print(df_posicao_limpo.head())
                 
         except FileNotFoundError:
             print(f"\nErro: Arquivo '{arquivo_upload}' não encontrado.")
             print("Verifique se a planilha está salva EXATAMENTE na mesma pasta que este script Python.")
 
         #print("\n--- Nomes exatos das colunas na tabela ---")
-        #print(df_goleiros_limpo.columns.tolist())
+        #print(df_posicao_limpo.columns.tolist())
 
         # ==========================================
         # 2. TRATAMENTO DO VALOR DE MERCADO
@@ -49,14 +49,14 @@ def gerar_ranking(arquivo_upload):
         nome_coluna_valor = 'Valor estimado'
 
         # Aplica a limpeza chamando a função do arquivo minhas_funcoes.py
-        df_goleiros_limpo['Valor_Numerico'] = df_goleiros_limpo[nome_coluna_valor].apply(valor.limpar_valor_mercado)
+        df_posicao_limpo['Valor_Numerico'] = df_posicao_limpo[nome_coluna_valor].apply(valor.limpar_valor_mercado)
 
         # Encontra o valor máximo verdadeiro da coluna (ignorando os -1 temporários)
-        valor_maximo_real = df_goleiros_limpo[df_goleiros_limpo['Valor_Numerico'] > 0]['Valor_Numerico'].max()
+        valor_maximo_real = df_posicao_limpo[df_posicao_limpo['Valor_Numerico'] > 0]['Valor_Numerico'].max()
 
         # Substitui todos os inegociáveis (-1) pelo (valor_maximo_real * 2)
         novo_valor_inegociaveis = valor_maximo_real * 2
-        df_goleiros_limpo.loc[df_goleiros_limpo['Valor_Numerico'] == -1, 'Valor_Numerico'] = novo_valor_inegociaveis
+        df_posicao_limpo.loc[df_posicao_limpo['Valor_Numerico'] == -1, 'Valor_Numerico'] = novo_valor_inegociaveis
 
         # ==========================================
         # 3. TRATAMENTO DO SALÁRIO
@@ -66,7 +66,7 @@ def gerar_ranking(arquivo_upload):
         nome_coluna_salario = 'Salário' 
 
         # Aplica a nova função de limpeza
-        df_goleiros_limpo['Salario_Numerico'] = df_goleiros_limpo[nome_coluna_salario].apply(valor.limpar_salario)
+        df_posicao_limpo['Salario_Numerico'] = df_posicao_limpo[nome_coluna_salario].apply(valor.limpar_salario)
 
         # ==========================================
         # 4. TRATAMENTO DO FIM DE CONTRATO
@@ -74,7 +74,7 @@ def gerar_ranking(arquivo_upload):
 
         # Substitua pelo nome exato do cabeçalho da sua planilha (ex: 'Expira', 'Fim do Contrato')
         nome_coluna_contrato = 'Data final de contrato'
-        df_goleiros_limpo['Contrato_Numerico'] = df_goleiros_limpo[nome_coluna_contrato].apply(data.limpar_data_contrato)
+        df_posicao_limpo['Contrato_Numerico'] = df_posicao_limpo[nome_coluna_contrato].apply(data.limpar_data_contrato)
 
         # ==========================================
         # 5. EXPORTAR PARA UMA NOVA PLANILHA
@@ -93,10 +93,10 @@ def gerar_ranking(arquivo_upload):
                             'Nota média'
                             ]
 
-        nome_arquivo_final = "Goleiros_Moneyball_Limpos.xlsx"
-        df_goleiros_exportacao = df_goleiros_limpo[colunas_para_ver]
+        nome_arquivo_final = "posicao_Moneyball_Limpos.xlsx"
+        df_posicao_exportacao = df_posicao_limpo[colunas_para_ver]
         print(f"\nExportando dados para '{nome_arquivo_final}'...")
-        df_goleiros_exportacao.to_excel(nome_arquivo_final, index=False, engine='openpyxl')
+        df_posicao_exportacao.to_excel(nome_arquivo_final, index=False, engine='openpyxl')
 
         # ==========================================
         # 6. ONDE O FILHO CHORA E O PAI NÃO VÊ: AHP PARA DEFINIR OS PESOS DOS CRITÉRIOS
@@ -108,7 +108,7 @@ def gerar_ranking(arquivo_upload):
             'Falhas/90', 
             '% Acerto do goleiro', 
         ]
-        nivel_3 = [col for col in df_goleiros_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
 
         def obter_nivel(criterio):
             if criterio in nivel_1: return 1
@@ -126,11 +126,11 @@ def gerar_ranking(arquivo_upload):
                 t_j = obter_nivel(criterios[j])
                 
                 # Comparações
-                if t_i == 1 and t_j == 2: val = 3.0       # T1 > T2
-                elif t_i == 1 and t_j == 3: val = 7.0     # T1 >> T3
+                if t_i == 1 and t_j == 2: val = 2.0       # T1 > T2
+                elif t_i == 1 and t_j == 3: val = 9.0     # T1 >> T3
                 elif t_i == 2 and t_j == 3: val = 5.0     # T2 > T3
-                elif t_i == 2 and t_j == 1: val = 1/3     # T2 < T1
-                elif t_i == 3 and t_j == 1: val = 1/7     # T3 << T1
+                elif t_i == 2 and t_j == 1: val = 1/2     # T2 < T1
+                elif t_i == 3 and t_j == 1: val = 1/9     # T3 << T1
                 elif t_i == 3 and t_j == 2: val = 1/5     # T3 < T2
                 else: val = 1.0                           # Empate (Mesmo nível)
                 
@@ -156,12 +156,12 @@ def gerar_ranking(arquivo_upload):
             'Falhas/90'
         ]
 
-        df_ranking = df_goleiros_limpo[colunas_para_ver].copy()
+        df_ranking = df_posicao_limpo[colunas_para_ver].copy()
         df_ranking['Nota_Moneyball'] = 0.0 # Inicializamos a nota com zero
 
         for criterio, peso in zip(criterios, pesos):
             
-            # Prevenção: garante que o critério realmente existe na tabela de goleiros
+            # Prevenção: garante que o critério realmente existe na tabela de posicao
             if criterio in df_ranking.columns:
                 val_max = df_ranking[criterio].max()
                 val_min = df_ranking[criterio].min()
@@ -184,16 +184,18 @@ def gerar_ranking(arquivo_upload):
         df_ranking['Nota_Moneyball'] = df_ranking['Nota_Moneyball'] * 100
 
         # Ordena do maior para o menor e remove as colunas normalizadas da exibição (deixando só o principal)
-        df_final = df_goleiros_limpo[['Jogador']].copy()
+        df_final = df_posicao_limpo[['Jogador']].copy()
         df_final['Nota_Moneyball'] = df_ranking['Nota_Moneyball']
         df_final = df_final.sort_values(by='Nota_Moneyball', ascending=False)
-        df_final['Equipe'] = df_goleiros_limpo['Equipe']
-        df_final['Valor estimado'] = df_goleiros_bruto['Valor estimado']
+        df_final['Equipe'] = df_posicao_limpo['Equipe']
+        df_final['Valor estimado'] = df_posicao_limpo['Valor_Numerico']
+        df_final['Idade'] = df_posicao_limpo['Idade']
+        
 
         # Escolha as colunas para o Print final
-        colunas_visualizacao = ['Jogador', 'Equipe' ,'Nota_Moneyball', 'Valor estimado']
+        colunas_visualizacao = ['Jogador', 'Equipe' ,'Nota_Moneyball', 'Valor estimado', 'Idade']
 
-        print("\n🏆 --- RANKING FINAL MONEYBALL (TOP 3 GOLEIROS) --- 🏆")
+        print("\n🏆 --- RANKING FINAL MONEYBALL (TOP 3 posicao) --- 🏆")
         # Arredonda a nota final para 2 casas decimais na hora de mostrar
         print(df_final[colunas_visualizacao].head(3).round({'Nota_Moneyball': 2}).to_string(index=False))
         return df_final[colunas_visualizacao]
