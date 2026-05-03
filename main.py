@@ -7,18 +7,19 @@ from Funções import ahp
 
 warnings.filterwarnings("ignore")
 
-def gerar_ranking(df_bruto):
+def gerar_ranking(df_bruto, posicao):
 
     # ==========================================
     # 1. CARREGAMENTO DA PLANILHA
     # ==========================================
 
-    # Como a planilha está na mesma pasta que este script, usamos apenas o nome.
-    # Note que adicionei a engine 'openpyxl' pois seu arquivo é um .xlsm
     try:
         try:
             # Recortando da coluna A (posição 0) até a CK (posição 89, limite exclusivo)
-            df_posicao_limpo = df_bruto.iloc[:, 0:89]
+            if posicao == '🧤Goleiros':
+                df_posicao_limpo = df_bruto.iloc[:, 0:89]
+            elif posicao == '🧱Zagueiros':
+                df_posicao_limpo = df_bruto.iloc[:, 0:138]
 
             # Limpando linhas vazias na primeira coluna
             df_posicao_limpo = df_posicao_limpo.dropna(subset=[df_posicao_limpo.columns[0]])
@@ -36,7 +37,10 @@ def gerar_ranking(df_bruto):
         # 2. TRATAMENTO DO VALOR DE MERCADO
         # ==========================================
 
-        nome_coluna_valor = 'Valor estimado'
+        if posicao == '🧤Goleiros':
+            nome_coluna_valor = 'Valor estimado'
+        elif posicao == '🧱Zagueiros':
+            nome_coluna_valor = 'Valor'
 
         # Aplica a limpeza chamando a função do arquivo minhas_funcoes.py
         df_posicao_limpo['Valor_Numerico'] = df_posicao_limpo[nome_coluna_valor].apply(valor.limpar_valor_mercado)
@@ -70,31 +74,73 @@ def gerar_ranking(df_bruto):
         # 5. EXPORTAR PARA UMA NOVA PLANILHA
         # ==========================================
 
-        colunas_para_ver = ['Valor_Numerico', 
-                            'Idade', 
-                            'Salario_Numerico', 
-                            'Altura', 
-                            'Contrato_Numerico',
-                            'Jogos completos',
-                            'Expected Goals Prevented xGP',
-                            'Falhas/90',
-                            '% Acerto do goleiro',
-                            'Defesas totais / Jogo',
-                            'Nota média'
-                            ]
+        if posicao == '🧤Goleiros':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Altura', 
+                                'Contrato_Numerico',
+                                'Jogos completos',
+                                'Expected Goals Prevented xGP',
+                                'Falhas/90',
+                                '% Acerto do goleiro',
+                                'Defesas totais / Jogo',
+                                'Nota média'
+                                ]
+        elif posicao == '🧱Zagueiros':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Altura', 
+                                'Contrato_Numerico',
+                                'Jogos completos',
+                                '% Cabeceios Ganhos',
+                                'Rem Bloqueados, Interceptações  e Bloqueios/90',
+                                '% Des',
+                                'Desarmes Decisivos / 90',
+                                'Acertos (Cabs, Des, Pres)',
+                                'Acertos/90',
+                                'Bolas roubadas /90',
+                                '% Bolas disputadas e ganhas',
+                                'Erros Defensivos /90',
+                                'Eficácia defensiva',
+                                'Dist / 90',
+                                'Nota média'
+                                ]
 
         # ==========================================
         # 6. ONDE O FILHO CHORA E O PAI NÃO VÊ: AHP PARA DEFINIR OS PESOS DOS CRITÉRIOS
         # ==========================================
-
-        nivel_1 = ['Expected Goals Prevented xGP', 'Defesas totais / Jogo', 'Jogos Completos', 'Valor_Numerico', 'Salario_Numerico']
-        nivel_2 = [ 
-            'Idade', 
-            'Falhas/90', 
-            '% Acerto do goleiro',
-            'Altura' 
-        ]
-        nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        if posicao == '🧤Goleiros':
+            nivel_1 = ['Jogos Completos', 'Falhas/90']
+            nivel_2 = [ 
+                'Expected Goals Prevented xGP',
+                'Idade', 
+                'Altura',
+                'Valor_Numerico',
+                'Salario_Numerico',                 
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        elif posicao == '🧱Zagueiros':
+            nivel_1 = ['Desarmes Decisivos / 90',
+                       '% Bolas disputadas e ganhas', 
+                       'Acertos/90',
+                       'Eficácia defensiva',
+                       '% Cabeceios Ganhos',
+                       'Nota média',
+                       'Jogos completos'
+                       ]
+            nivel_2 = [
+                '% Des',
+                'Altura',
+                'Dist / 90', 
+                'Rem Bloqueados, Interceptações  e Bloqueios/90',
+                'Acertos (Cabs, Des, Pres)',
+                'Valor_Numerico',
+                'Salario_Numerico',
+                'Idade'
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
 
         def obter_nivel(criterio):
             if criterio in nivel_1: return 1
@@ -127,11 +173,6 @@ def gerar_ranking(df_bruto):
 
         pesos, cr, consistente = ahp.calcular_pesos_ahp(matriz_saaty)
 
-        #print("\n--- RESULTADOS DO AHP ---")
-        #print(f"Pesos dos Critérios: {pesos}")
-        #print(f"Taxa de Consistência (CR): {cr:.4f}")
-        #print(f"A matriz é consistente? {'Sim' if consistente else 'Não (Revise as notas da matriz)'}")
-
         # ==========================================
         # 7. AQUI O FILHO TERMINA DE CHORAR: REALIZAÇÃO DO RANKING FINAL COM BASE NOS PESOS DO AHP
         # ==========================================
@@ -142,6 +183,7 @@ def gerar_ranking(df_bruto):
             'Falhas/90',
             'Idade',
             'Contrato_Numerico'
+            'Erros Defensivos /90'
         ]
 
         df_ranking = df_posicao_limpo[colunas_para_ver].copy()
@@ -183,9 +225,6 @@ def gerar_ranking(df_bruto):
         # Escolha as colunas para o Print final
         colunas_visualizacao = ['Jogador', 'Equipe' ,'Nota_Moneyball', 'Valor estimado', 'Idade']
 
-        print("\n🏆 --- RANKING FINAL MONEYBALL (TOP 3 posicao) --- 🏆")
-        # Arredonda a nota final para 2 casas decimais na hora de mostrar
-        print(df_final[colunas_visualizacao].head(3).round({'Nota_Moneyball': 2}).to_string(index=False))
         return df_final[colunas_visualizacao]
     except Exception as e:
             return f"Erro ao processar: {e}"

@@ -4,19 +4,56 @@ import main
 import google.generativeai as genai
 import altair as alt
 
+def verifica_senha():
+    """Retorna True se o usuário digitou a senha correta."""
+    
+    def senha_inserida():
+        # Compara a senha digitada com a que está salva nos Secrets
+        if st.session_state["senha_digitada"] == st.secrets["SENHA_DO_APP"]:
+            st.session_state["senha_correta"] = True
+            del st.session_state["senha_digitada"]  # Apaga da memória por segurança
+        else:
+            st.session_state["senha_correta"] = False
+
+    if "senha_correta" not in st.session_state:
+        # Primeira vez abrindo o site: mostra a caixa de senha
+        st.text_input("🔑 Digite a senha de acesso:", type="password", on_change=senha_inserida, key="senha_digitada")
+        return False
+    elif not st.session_state["senha_correta"]:
+        # Errou a senha: mostra a caixa de novo com erro
+        st.text_input("🔑 Digite a senha de acesso:", type="password", on_change=senha_inserida, key="senha_digitada")
+        st.error("😕 Senha incorreta. Tente novamente.")
+        return False
+    else:
+        # Senha certa! Libera o acesso.
+        return True
+
+# SE A SENHA NÃO FOR VERDADEIRA, O CÓDIGO PARA AQUI!
+if not verifica_senha():
+    st.stop()
+
 st.set_page_config(page_title="Scout Moneyball", page_icon="⚽", layout="wide")
 
 # ==========================================
 # BARRA LATERAL (SIDEBAR)
 # ==========================================
+if 'ja_calculou' not in st.session_state:
+    st.session_state['ja_calculou'] = False
+
 st.sidebar.title("⚙️ Configurações")
 
 posicao_analise = st.sidebar.selectbox(
-    "Qual posição vamos analisar?",
-    ['🧤Goleiros']
+    "Selecione a Posição para Análise:", 
+    ['🧤Goleiros', '🧱Zagueiros'],
+    disabled=st.session_state['ja_calculou'] 
 )
 
-arquivo_upload = st.sidebar.file_uploader("Sua planilha (.xlsm / .xlsx)", type=["xlsx", "xlsm"])
+arquivo_upload = st.sidebar.file_uploader(
+    "Arraste a sua planilha Moneyball aqui (.xlsx ou .xlsm)", 
+    type=["xlsx", "xlsm"],
+    disabled=st.session_state['ja_calculou'] 
+)
+
 # ==========================================
 # ÁREA PRINCIPAL
 # ==========================================
@@ -46,7 +83,7 @@ if arquivo_upload is not None:
         with st.spinner(f"Processando {posicao_analise}..."):
             
             df_aba_selecionada = banco_completo[posicao_analise]
-            tabela_processada = main.gerar_ranking(df_aba_selecionada)
+            tabela_processada = main.gerar_ranking(df_aba_selecionada, posicao_analise)
             st.session_state['dados_salvos'] = tabela_processada
             
             # Limpa o texto antigo da IA
@@ -77,36 +114,7 @@ if arquivo_upload is not None:
     if 'dados_salvos' in st.session_state:
         
         df_resultado = st.session_state['dados_salvos']
-        
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🎯 Filtros de Busca")
-        
-        # O usuário agora pode digitar "20000" diretamente
-        valor_maximo_base = float(df_resultado['Valor estimado'].max())
-        
-        orcamento_max = st.sidebar.number_input(
-            "Orçamento Máximo (€)", 
-            min_value=0.0, 
-            max_value=valor_maximo_base, 
-            value=valor_maximo_base, 
-            step=5000.0, # Pula de 5 em 5 mil nos botões
-            format="%.0f" # Mostra o número sem casas decimais
-        )
-        
-        idade_max = st.sidebar.number_input(
-            "Idade Máxima", 
-            min_value=15, 
-            max_value=45, 
-            value=40,
-            step=1
-        )
-        
-        # Filtra os dados da memória
-        df_filtrado = df_resultado[
-            (df_resultado['Valor estimado'] <= orcamento_max) & 
-            (df_resultado['Idade'] <= idade_max)
-        ]
-        
+        df_filtrado = df_resultado.copy()
         # ==========================================
         # VISUALIZAÇÃO DA TELA (Gráfico em cima, Tabela embaixo)
         # ==========================================
@@ -126,18 +134,35 @@ if arquivo_upload is not None:
             st.markdown("---")
             
             df_da_posicao = banco_completo[posicao_analise].copy() # Faz uma cópia para não bagunçar o original
-            colunas_para_juntar = ['Jogador', 'Equipe',
-                            'Valor estimado', 
-                            'Idade', 
-                            'Salário', 
-                            'Altura', 
-                            'Data final de contrato',
-                            'Jogos completos',
-                            'Expected Goals Prevented xGP',
-                            'Falhas/90',
-                            '% Acerto do goleiro',
-                            'Defesas totais / Jogo',
-                            'Nota média']
+            if posicao_analise == '🧤Goleiros':
+                colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor estimado', 
+                                'Idade', 
+                                'Salário', 
+                                'Altura', 
+                                'Data final de contrato',
+                                'Jogos completos',
+                                'Expected Goals Prevented xGP',
+                                'Falhas/90',
+                                '% Acerto do goleiro',
+                                'Defesas totais / Jogo',
+                                'Nota média']
+            elif posicao_analise == '🧱Zagueiros':
+                colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor', 
+                                'Idade', 
+                                'Salário', 
+                                'Altura', 
+                                'Data final de contrato',
+                                'Jogos completos',
+                                'Desarmes Decisivos / 90',
+                                'Acertos (Cabs, Des, Pres)',
+                                'Acertos/90',
+                                 'Bolas roubadas /90',
+                                 '% Bolas disputadas e ganhas',
+                                 'Erros Defensivos /90',
+                                 'Eficácia defensiva',
+                                 'Nota média']
             df_resultados = df_da_posicao[colunas_para_juntar].copy()
             df_resultados['Nota_Moneyball'] = df_resultado['Nota_Moneyball']
             df_resultados['Equipe'] = df_da_posicao['Equipe']
@@ -228,8 +253,10 @@ if arquivo_upload is not None:
                     
                 Escreva um texto direto e profissional para o treinador. 
                 Recomende a contratação de 3 jogadores justificando o custo-benefício e analisando os dados 
-                em relação aos outros dois candidatos. Considere que é mais dificil contratar jogadores com contrato longo.
+                em relação aos outros dois candidatos. Ignore a data de contrato.
+                Observe que m é mil e M é milhão. 200m € é igual a 200 mil de euros por exemplo.
                 Também verifique a diferença entre os preços dos jogadores.
+                Compare a quantidade de partidas também, se for muito baixo em relação aos outros os dados podem ser menos confiáveis.
                 Faça uma análise breve de cada um e depois uma conclusão final recomendando o melhor alvo.
                     
                 Assine o final como Olheiro IA.
