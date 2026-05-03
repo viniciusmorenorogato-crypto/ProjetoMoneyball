@@ -7,7 +7,7 @@ from Funções import ahp
 
 warnings.filterwarnings("ignore")
 
-def gerar_ranking(arquivo_upload, posicao_analise ):
+def gerar_ranking(df_bruto):
 
     # ==========================================
     # 1. CARREGAMENTO DA PLANILHA
@@ -17,17 +17,8 @@ def gerar_ranking(arquivo_upload, posicao_analise ):
     # Note que adicionei a engine 'openpyxl' pois seu arquivo é um .xlsm
     try:
         try:
-            print("Carregando banco de dados...")
-            banco_de_dados = pd.read_excel(arquivo_upload, sheet_name=None, engine='openpyxl')
-            
-            print("Planilha carregada com sucesso!")
-            print("Abas encontradas:", list(banco_de_dados.keys()))
-            
-            # Pegando a aba bruta da posição selecionada
-            df_posicao_bruto = banco_de_dados[posicao_analise]
-
             # Recortando da coluna A (posição 0) até a CK (posição 89, limite exclusivo)
-            df_posicao_limpo = df_posicao_bruto.iloc[:, 0:89]
+            df_posicao_limpo = df_bruto.iloc[:, 0:89]
 
             # Limpando linhas vazias na primeira coluna
             df_posicao_limpo = df_posicao_limpo.dropna(subset=[df_posicao_limpo.columns[0]])
@@ -36,7 +27,6 @@ def gerar_ranking(arquivo_upload, posicao_analise ):
             print(df_posicao_limpo.head())
                 
         except FileNotFoundError:
-            print(f"\nErro: Arquivo '{arquivo_upload}' não encontrado.")
             print("Verifique se a planilha está salva EXATAMENTE na mesma pasta que este script Python.")
 
         #print("\n--- Nomes exatos das colunas na tabela ---")
@@ -153,7 +143,9 @@ def gerar_ranking(arquivo_upload, posicao_analise ):
         criterios_de_custo = [
             'Valor_Numerico', 
             'Salario_Numerico', 
-            'Falhas/90'
+            'Falhas/90',
+            'Idade',
+            'Contrato_Numerico'
         ]
 
         df_ranking = df_posicao_limpo[colunas_para_ver].copy()
