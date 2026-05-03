@@ -83,20 +83,16 @@ def gerar_ranking(df_bruto):
                             'Nota média'
                             ]
 
-        nome_arquivo_final = "posicao_Moneyball_Limpos.xlsx"
-        df_posicao_exportacao = df_posicao_limpo[colunas_para_ver]
-        print(f"\nExportando dados para '{nome_arquivo_final}'...")
-        df_posicao_exportacao.to_excel(nome_arquivo_final, index=False, engine='openpyxl')
-
         # ==========================================
         # 6. ONDE O FILHO CHORA E O PAI NÃO VÊ: AHP PARA DEFINIR OS PESOS DOS CRITÉRIOS
         # ==========================================
 
-        nivel_1 = ['Expected Goals Prevented xGP', 'Altura', 'Jogos completos', 'Defesas totais / Jogo', 'Nota média']
+        nivel_1 = ['Expected Goals Prevented xGP', 'Defesas totais / Jogo', 'Jogos Completos', 'Valor_Numerico', 'Salario_Numerico']
         nivel_2 = [ 
             'Idade', 
             'Falhas/90', 
-            '% Acerto do goleiro', 
+            '% Acerto do goleiro',
+            'Altura' 
         ]
         nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
 

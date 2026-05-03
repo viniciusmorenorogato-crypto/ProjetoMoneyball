@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import main  
 import google.generativeai as genai
+import altair as alt
 
 st.set_page_config(page_title="Scout Moneyball", page_icon="⚽", layout="wide")
 
@@ -33,17 +34,43 @@ if arquivo_upload is not None:
     # Recupera o banco completo da memória
     banco_completo = st.session_state['banco_de_dados_completo']
     
-    # 2. O BOTÃO AGORA É INSTANTÂNEO
-    if st.sidebar.button("🚀 Calcular Ranking"):
-        with st.spinner(f"Processando a matemática de {posicao_analise}..."):
+    # Inicializa a trava na memória
+    if 'ja_calculou' not in st.session_state:
+        st.session_state['ja_calculou'] = False
+
+    # Criamos duas colunas na lateral para os botões ficarem alinhados
+    col_btn1, col_btn2 = st.sidebar.columns(2)
+
+    # O parâmetro 'disabled' trava o botão se a variável for True
+    if col_btn1.button("🚀 Calcular", disabled=st.session_state['ja_calculou'], use_container_width=True):
+        with st.spinner(f"Processando {posicao_analise}..."):
             
-            # Pega SÓ a aba que o usuário selecionou no menu
             df_aba_selecionada = banco_completo[posicao_analise]
-            
-            # Passa a aba já lida para o main.py trabalhar
             tabela_processada = main.gerar_ranking(df_aba_selecionada)
             st.session_state['dados_salvos'] = tabela_processada
-            st.sidebar.success("Ranking calculado e salvo na memória!")
+            
+            # Limpa o texto antigo da IA
+            if 'relatorio_ia_salvo' in st.session_state:
+                del st.session_state['relatorio_ia_salvo']
+            
+            # Aciona a trava e recarrega a página na mesma hora!
+            st.session_state['ja_calculou'] = True
+            st.rerun()
+
+    # O botão Recomeçar só aparece se a trava estiver ativada
+    if st.session_state['ja_calculou']:
+        if col_btn2.button("🔄 Recomeçar", use_container_width=True):
+            # Destrava o botão de calcular
+            st.session_state['ja_calculou'] = False
+            
+            # Apaga os dados salvos para limpar a tela
+            if 'dados_salvos' in st.session_state:
+                del st.session_state['dados_salvos']
+            if 'relatorio_ia_salvo' in st.session_state:
+                del st.session_state['relatorio_ia_salvo']
+                
+            # Recarrega a página para voltar ao estado inicial
+            st.rerun()    
                             
     # 2. SE A MEMÓRIA ESTIVER CHEIA, mostramos os filtros e a tela!
     # (Isso fica FORA do botão, então não some quando mexemos na barrinha)
@@ -117,50 +144,109 @@ if arquivo_upload is not None:
             df_resultados = df_resultados.sort_values(by='Nota_Moneyball', ascending=False)
             
                      
-            st.subheader("📊 Comparativo do Top 10")
-            dados_grafico = df_resultados.head(10).set_index('Jogador')[['Nota_Moneyball']]
-            st.bar_chart(dados_grafico)
-            
-            st.markdown("---") 
-            
-            st.subheader("📋 Relatório Filtrado")
-            st.dataframe(df_resultados.head(10), use_container_width=True, hide_index=True)
-            
-            st.markdown("---")
-            st.subheader("🤖 Relatório do Olheiro Chefe (IA)")
+        # ==========================================
+        # LISTA TOP 10 (TEXTO)
+        # ==========================================
+        col_lista, col_grafico = st.columns([1, 2]) # O gráfico fica mais largo que a lista
 
-            # Pega a chave da API de forma segura escondida no Streamlit
-            # NUNCA coloque a chave solta no código que vai pro GitHub Público!
-            CHAVE_API = st.secrets["CHAVE_API_GEMINI"]
-            genai.configure(api_key=CHAVE_API)
-            modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
+        
+        with col_lista:
+            st.subheader("🏆 Top 10 Recomendados")
+            
+            # Pega apenas os 10 primeiros
+            top_10_lista = df_filtrado.head(10)
+            
+            # Loop para escrever linha por linha formatado
+            # Usamos enumerate(..., 1) para contar de 1 a 10
+            for i, row in enumerate(top_10_lista.itertuples(), 1):
+                nome = row.Jogador
+                
+                # st.markdown permite usar **negrito** e organizar bonitinho
+                st.markdown(f"**{i}º {nome}**")
+                st.write("") # Espaço em branco para separar
 
-            if 'relatorio_ia_salvo' not in st.session_state:
-                with st.spinner("O Olheiro IA está redigindo o relatório..."):
-                        
-                    # 1. Pega os 3 melhores jogadores e converte para texto
-                    dados_top3 = df_resultados.head(5).to_dict('records')
-                        
-                    # 2. Cria o comando para a IA
-                    prompt = f"""
-                    Você é o Olheiro Chefe de um time de futebol que usa a filosofia Moneyball.
-                    Aqui estão os 3 melhores candidatos encontrados pelo nosso algoritmo matemático:
-                    {dados_top3}
-                        
-                    Escreva um parágrafo curto, direto e profissional para o treinador. 
-                    Recomende a contratação de 3 jogadores justificando o custo-benefício e analisando os dados 
-                    em relação aos outros dois candidatos.
-                        
-                    Assine o final como Olheiro IA.
-                    """
-                        
-                    # 3. Chama a IA e imprime a resposta na tela web
+       # ==========================================
+        # GRÁFICO NATIVO (BONITO E TRAVADO)
+        # ==========================================
+        with col_grafico:
+            st.subheader("📊 Comparativo Detalhado")
+            
+            # Filtra colunas numéricas e cria o Selectbox
+            colunas_numericas = df_resultados.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            index_padrao = colunas_numericas.index('Nota_Moneyball') if 'Nota_Moneyball' in colunas_numericas else 0
+            
+            atributo_escolhido = st.selectbox(
+                "Escolha o atributo para comparar o Top 10:", 
+                colunas_numericas, 
+                index=index_padrao
+            )
+            
+            # Pega os 10 primeiros
+            dados_grafico = df_resultados.head(10)
+            
+            # Cria o gráfico usando Altair
+            grafico_bonito = alt.Chart(dados_grafico).mark_bar(
+                color='#1f77b4', 
+                cornerRadiusEnd=4
+                # REMOVI O HEIGHT DAQUI! (Para as barras ficarem com espessura normal)
+            ).encode(
+                x=alt.X(f'{atributo_escolhido}:Q', title=atributo_escolhido),
+                y=alt.Y('Jogador:N', sort='-x', title='', axis=alt.Axis(labelLimit=200)),
+                tooltip=['Jogador', alt.Tooltip(f'{atributo_escolhido}:Q', format='.2f')] 
+            ).properties(
+                height=400 # O tamanho total do gráfico vai aqui!
+            )
+            
+            # Exibe o gráfico travado no Streamlit
+            st.altair_chart(grafico_bonito, use_container_width=True)           
+            
+        st.markdown("---")
+        
+        st.subheader("📋 Relatório Filtrado")
+        st.dataframe(df_resultados.head(10), use_container_width=True, hide_index=True)
+            
+        st.markdown("---")
+        st.subheader("🤖 Opinião do Olheiro Chefe")
+
+        # Pega a chave da API de forma segura escondida no Streamlit
+        # NUNCA coloque a chave solta no código que vai pro GitHub Público!
+        CHAVE_API = st.secrets["CHAVE_API_GEMINI"]
+        genai.configure(api_key=CHAVE_API)
+        modelo_ia = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+
+        if 'relatorio_ia_salvo' not in st.session_state:
+            with st.spinner("O Olheiro IA está analisando e redigindo o relatório..."):
+                # Prepara os dados
+                # 1. Pega os 3 melhores jogadores e converte para texto
+                dados_top3 = df_resultados.head(10).to_dict('records')
+                    
+                # 2. Cria o comando para a IA
+                prompt = f"""
+                Você é o Olheiro Chefe de um time de futebol que usa a filosofia Moneyball.
+                Aqui estão os 3 melhores candidatos encontrados pelo nosso algoritmo matemático:
+                {dados_top3}
+                    
+                Escreva um texto direto e profissional para o treinador. 
+                Recomende a contratação de 3 jogadores justificando o custo-benefício e analisando os dados 
+                em relação aos outros dois candidatos. Considere que é mais dificil contratar jogadores com contrato longo.
+                Também verifique a diferença entre os preços dos jogadores.
+                Faça uma análise breve de cada um e depois uma conclusão final recomendando o melhor alvo.
+                    
+                Assine o final como Olheiro IA.
+                """
+                
+                try:
+                    # Tenta chamar o Google
                     resposta = modelo_ia.generate_content(prompt)
-                    st.write(resposta.text)
                     st.session_state['relatorio_ia_salvo'] = resposta.text
-            else:
-                st.write(st.session_state['relatorio_ia_salvo'])
-            
+                    st.rerun()
+                except Exception as e:
+                    # Se o Google der erro de limite de velocidade, salva essa mensagem amigável!
+                    mensagem_erro = "⚠️ O Olheiro IA está analisando muitos relatórios agora (limite de velocidade do Google). Aguarde 1 minuto e clique em Calcular novamente!"
+                    st.session_state['relatorio_ia_salvo'] = mensagem_erro
+                    st.rerun()
+        else:
+            st.write(st.session_state['relatorio_ia_salvo'])
             
 else:
     st.info("👈 Comece fazendo o upload da sua planilha na barra lateral!")
