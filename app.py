@@ -135,27 +135,32 @@ if arquivo_upload is not None:
             genai.configure(api_key=CHAVE_API)
             modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
-            with st.spinner("O Olheiro IA está redigindo o relatório..."):
-                    
-                 # 1. Pega os 3 melhores jogadores e converte para texto
-                dados_top3 = df_resultados.head(5).to_dict('records')
-                    
-                # 2. Cria o comando para a IA
-                prompt = f"""
-                Você é o Olheiro Chefe de um time de futebol que usa a filosofia Moneyball.
-                Aqui estão os 3 melhores candidatos encontrados pelo nosso algoritmo matemático:
-                {dados_top3}
-                    
-                Escreva um parágrafo curto, direto e profissional para o treinador. 
-                Recomende a contratação de 3 jogadores justificando o custo-benefício e analisando os dados 
-                em relação aos outros dois candidatos.
-                    
-                Assine o final como Olheiro IA.
-                """
-                    
-                # 3. Chama a IA e imprime a resposta na tela web
-                resposta = modelo_ia.generate_content(prompt)
-                st.write(resposta.text)
+            if 'relatorio_ia_salvo' not in st.session_state:
+                with st.spinner("O Olheiro IA está redigindo o relatório..."):
+                        
+                    # 1. Pega os 3 melhores jogadores e converte para texto
+                    dados_top3 = df_resultados.head(5).to_dict('records')
+                        
+                    # 2. Cria o comando para a IA
+                    prompt = f"""
+                    Você é o Olheiro Chefe de um time de futebol que usa a filosofia Moneyball.
+                    Aqui estão os 3 melhores candidatos encontrados pelo nosso algoritmo matemático:
+                    {dados_top3}
+                        
+                    Escreva um parágrafo curto, direto e profissional para o treinador. 
+                    Recomende a contratação de 3 jogadores justificando o custo-benefício e analisando os dados 
+                    em relação aos outros dois candidatos.
+                        
+                    Assine o final como Olheiro IA.
+                    """
+                        
+                    # 3. Chama a IA e imprime a resposta na tela web
+                    resposta = modelo_ia.generate_content(prompt)
+                    st.write(resposta.text)
+                    st.session_state['relatorio_ia_salvo'] = resposta.text
+            else:
+                st.write(st.session_state['relatorio_ia_salvo'])
+            
             
 else:
     st.info("👈 Comece fazendo o upload da sua planilha na barra lateral!")
