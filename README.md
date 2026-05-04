@@ -3,7 +3,7 @@ O Projeto Moneyball é uma ferramenta de análise de dados (Data Analytics) cons
 
 Através de modelagem matemática, o projeto analisa atributos exportados do jogo e gera um ranking absoluto dos melhores alvos custo-benefício para o seu time.
 
-- Por enquanto só funciona para Goleiros.
+- Por enquanto só funciona para Goleiros e Zagueiros.
 
 🛠️ Tecnologias Utilizadas
 Python: Linguagem base do projeto.
