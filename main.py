@@ -20,6 +20,16 @@ def gerar_ranking(df_bruto, posicao):
                 df_posicao_limpo = df_bruto.iloc[:, 0:89]
             elif posicao == '🧱Zagueiros':
                 df_posicao_limpo = df_bruto.iloc[:, 0:138]
+            elif posicao == '🛡️Laterais':
+                df_posicao_limpo = df_bruto.iloc[:, 0:109]
+            elif posicao == '🛡️Volantes':
+                df_posicao_limpo = df_bruto.iloc[:, 0:104]
+            elif posicao == '⚙️Box-To-Box':
+                df_posicao_limpo = df_bruto.iloc[:, 0:107]
+            elif posicao == '⚙️Armadores':
+                df_posicao_limpo = df_bruto.iloc[:, 0:109]
+            elif posicao == '🎯Avançados':
+                df_posicao_limpo = df_bruto.iloc[:, 0:140]
 
             # Limpando linhas vazias na primeira coluna
             df_posicao_limpo = df_posicao_limpo.dropna(subset=[df_posicao_limpo.columns[0]])
@@ -41,6 +51,16 @@ def gerar_ranking(df_bruto, posicao):
             nome_coluna_valor = 'Valor estimado'
         elif posicao == '🧱Zagueiros':
             nome_coluna_valor = 'Valor'
+        elif posicao == '🛡️Laterais':
+            nome_coluna_valor = 'Valor Estimado'
+        elif posicao == '🛡️Volantes':
+            nome_coluna_valor = 'Valor'
+        elif posicao == '⚙️Box-To-Box':
+            nome_coluna_valor = 'Valor'
+        elif posicao == '⚙️Armadores':
+            nome_coluna_valor = 'Valor'
+        elif posicao == '🎯Avançados':
+            nome_coluna_valor = 'Valor Estimado'
 
         # Aplica a limpeza chamando a função do arquivo minhas_funcoes.py
         df_posicao_limpo['Valor_Numerico'] = df_posicao_limpo[nome_coluna_valor].apply(valor.limpar_valor_mercado)
@@ -66,10 +86,23 @@ def gerar_ranking(df_bruto, posicao):
         # 4. TRATAMENTO DO FIM DE CONTRATO
         # ==========================================
 
-        # Substitua pelo nome exato do cabeçalho da sua planilha (ex: 'Expira', 'Fim do Contrato')
-        nome_coluna_contrato = 'Data final de contrato'
-        df_posicao_limpo['Contrato_Numerico'] = df_posicao_limpo[nome_coluna_contrato].apply(data.limpar_data_contrato)
+        if posicao in ['🛡️Volantes']:
+            nome_coluna_contrato = 'Data Final de Contrato' # ou o nome exato que estiver na sua planilha
+        elif posicao in ['⚙️Box-To-Box']:
+            nome_coluna_contrato = 'Fim de contrato' # ou o nome exato que estiver na sua planilha
+        elif posicao in ['⚙️Armadores']:
+            nome_coluna_contrato = 'Data Final do contrato' # ou o nome exato que estiver na sua planilha
+        elif posicao in ['🎯Avançados']:        
+            nome_coluna_contrato = 'Data Final do contrato' # ou o nome exato que estiver na sua planilha
+        else:
+            nome_coluna_contrato = 'Data final de contrato' # ou o nome exato que estiver na sua planilha 
 
+        # Verifica se a coluna realmente existe na aba atual (ex: os Laterais não têm)
+        if nome_coluna_contrato in df_posicao_limpo.columns:
+            df_posicao_limpo['Contrato_Numerico'] = df_posicao_limpo[nome_coluna_contrato].apply(data.limpar_data_contrato)
+        else:
+            # Se a coluna não existir, o Python ignora o tratamento e segue a vida!
+            pass
         # ==========================================
         # 5. EXPORTAR PARA UMA NOVA PLANILHA
         # ==========================================
@@ -107,7 +140,114 @@ def gerar_ranking(df_bruto, posicao):
                                 'Dist / 90',
                                 'Nota média'
                                 ]
-
+        elif posicao == '🛡️Laterais':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Altura', 
+                                'Jogos completos',
+                                'Participação / 90',
+                                'Fintas / 90',
+                                'Minutos pra criar uma chance de perigo',
+                                'Cruzamentos Conseguidos',
+                                'xA + xG /90',
+                                'Gols + A/90',
+                                'Movimentos ofensivos com sucesso',
+                                'Dist / 90',
+                                'Erros Defensivos /90',
+                                'Eficácia defensiva',
+                                'Nota média'
+                                ]
+        elif posicao == '🛡️Volantes':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Jogos Completos',
+                                'Contrato_Numerico',
+                                'Cartões por falta cometida',
+                                '% Pressão ganha/90',
+                                '% Bolas disputadas e ganhas (sem falta)',
+                                'Passes certos  - errados / Jogo',
+                                'Passes em progressão/90',
+                                'Eficácia defensiva',
+                                'xA por passe decisivo',
+                                'Criação / 90',
+                                'Distância /90',
+                                'Nota média'
+                                ]
+        elif posicao == '⚙️Box-To-Box':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Jogos completos',
+                                'Contrato_Numerico',
+                                'Taxa de Conversão %',
+                                'Participação por jogo (passes, fnt, fin, criação, roubadas de bola, etc)',
+                                '% Acerto',
+                                'xA / Passe Decisivo',
+                                'Dist / 90',
+                                'Último terço/90',
+                                'Nota média'
+                                ]
+        elif posicao == '⚙️Armadores':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Jogos completos',
+                                'Contrato_Numerico',
+                                'Gols+ Assist / 90',
+                                'Fintas /90',
+                                'non Pen xG /90',
+                                'xA /90',
+                                '% Cruzamentos certos',
+                                'Passes Decisivos pra uma assistência',
+                                'xA / Passe Decisivo',
+                                'Finalizações no gol/90',
+                                'Conversão dos chutes de fora da  área',
+                                'Ações com Bola T/90',
+                                '% Sucesso de ações com bola',
+                                'Ações que geraram finalizações ao gol /90',
+                                'Chances de perigo criadas /90',
+                                'Participação do jogador a cada 90 minutos (fnt, cabs, pass, finalizaçõs)',
+                                'Participação em passes / 90',
+                                'Passes em construção de jog OF /90',
+                                'Ações no último terço / 90',
+                                'Tentativas de marcar um gol / 90',
+                                'Dist / 90',
+                                'Sprints/90',
+                                'Nota média'
+                                ]
+        elif posicao == '🎯Avançados':
+            colunas_para_ver = ['Valor_Numerico', 
+                                'Idade', 
+                                'Salario_Numerico', 
+                                'Jogos completos',
+                                'Contrato_Numerico',
+                                'Média de gols em toda a Carreira',
+                                'Média gols / partida',
+                                'Média gols + ass / partida',
+                                'Gols Sem Pênalti /90',
+                                'Gols de dentro da área /90',
+                                'Gols de fora da área /90',
+                                '% Cabs ganhos',
+                                'Impedimentos / 90',
+                                'Finalizações no gol/90',
+                                'GPI (Goal Probability Index)',
+                                'Over xG / Under xG per 90',
+                                'Minutos pra acertar uma finalização no gol',
+                                'Minutos pra MARCAR um gol',
+                                'Minutos pra PARTICIPAR de um gol',
+                                'Gols não esperados SEM PÊNALTI',
+                                'xG Conclusion',
+                                'Pass D /90',
+                                'Fintas/90',
+                                '% Des + Pressões concluídas',
+                                'Dist / 90',
+                                'Eficácia ofensiva',
+                                'Participação do jogador a cada 90 minutos',
+                                '% Sucesso de ações com bola',
+                                'Tentativas de marcar um gol  /90',
+                                'Nota média']
         # ==========================================
         # 6. ONDE O FILHO CHORA E O PAI NÃO VÊ: AHP PARA DEFINIR OS PESOS DOS CRITÉRIOS
         # ==========================================
@@ -139,6 +279,101 @@ def gerar_ranking(df_bruto, posicao):
                 'Valor_Numerico',
                 'Salario_Numerico',
                 'Idade'
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        elif posicao == '🛡️Laterais':
+            nivel_1 = ['Participação / 90',
+                       'Minutos pra criar uma chance de perigo',
+                       'xA + xG /90',
+                       'Eficácia defensiva',
+                       'Nota média',
+                       'Jogos completos'
+                       ]
+            nivel_2 = [
+                'Valor_Numerico',
+                'Salario_Numerico',
+                'Idade',
+                'Fintas / 90',
+                'Gols + A/90',
+                'Movimentos ofensivos com sucesso',
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        elif posicao == '🛡️Volantes':
+            nivel_1 = ['Eficácia defensiva',
+                       'Passes certos  - errados / Jogo',
+                       'xA por passe decisivo',
+                       'Criação / 90',
+                       '% Bolas disputadas e ganhas (sem falta)',
+                       'Nota média',
+                       'Jogos Completos'
+                       ]
+            nivel_2 = [
+                '% Pressão ganha/90',
+                'Passes em progressão/90',
+                'Distância /90',
+                'Valor_Numerico',
+                'Salario_Numerico',
+                'Idade',
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        elif posicao == '⚙️Box-To-Box':
+            nivel_1 = ['Taxa de Conversão %',
+                       'xA / Passe Decisivo',
+                       'Dist / 90',
+                       'Nota média',
+                       'Jogos completos'
+                       ]
+            nivel_2 = [
+                'Participação por jogo (passes, fnt, fin, criação, roubadas de bola, etc)',
+                '% Acerto',
+                'Último terço/90',
+                'Valor_Numerico',
+                'Salario_Numerico',
+                'Idade',
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        elif posicao == '⚙️Armadores':
+            nivel_1 = ['Gols+ Assist / 90',
+                       'xA / Passe Decisivo',
+                       'Ações no último terço / 90',
+                       'Nota média',
+                       'Jogos completos'
+                       ]
+            nivel_2 = [
+                'Fintas /90',
+                'non Pen xG /90',
+                '% Cruzamentos certos',
+                'Passes Decisivos pra uma assistência',
+                'Tentativas de marcar um gol / 90',
+                'Dist / 90',
+                'Valor_Numerico',
+                'Salario_Numerico',
+                'Idade',
+            ]
+            nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
+        elif posicao == '🎯Avançados':
+            nivel_1 = ['Média de gols em toda a Carreira',
+                       'Média gols / partida',
+                       'Nota média',
+                       'Valor_Numerico',
+                       'Salario_Numerico',
+                       'Jogos completos',
+                       'GPI (Goal Probability Index)'
+                       ]
+            nivel_2 = [
+                'Gols Sem Pênalti /90',
+                'Gols de dentro da área /90',
+                'Gols de fora da área /90',
+                '% Cabs ganhos',
+                'Finalizações no gol/90',
+                'GPI (Goal Probability Index)',
+                'Minutos pra MARCAR um gol',
+                'xG Conclusion',
+                'Pass D /90',
+                'Fintas/90',
+                'Dist / 90',
+                'Eficácia ofensiva',
+                'Participação do jogador a cada 90 minutos',
             ]
             nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
 
@@ -182,8 +417,14 @@ def gerar_ranking(df_bruto, posicao):
             'Salario_Numerico', 
             'Falhas/90',
             'Idade',
-            'Contrato_Numerico'
-            'Erros Defensivos /90'
+            'Contrato_Numerico',
+            'Erros Defensivos /90',
+            'Minutos pra criar uma chance de perigo',
+            'Cartões por falta cometida',
+            'Minutos pra acertar uma finalização no gol',
+            'Minutos pra MARCAR um gol',
+            'Minutos pra PARTICIPAR de um gol',
+            'Impedimentos / 90'
         ]
 
         df_ranking = df_posicao_limpo[colunas_para_ver].copy()

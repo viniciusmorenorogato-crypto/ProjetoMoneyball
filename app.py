@@ -44,7 +44,7 @@ st.sidebar.title("⚙️ Configurações")
 
 posicao_analise = st.sidebar.selectbox(
     "Selecione a Posição para Análise:", 
-    ['🧤Goleiros', '🧱Zagueiros'],
+    ['🧤Goleiros', '🧱Zagueiros', '🛡️Laterais', '🛡️Volantes', '⚙️Box-To-Box', '⚙️Armadores', '🎯Avançados'],
     disabled=st.session_state['ja_calculou'] 
 )
 
@@ -163,12 +163,122 @@ if arquivo_upload is not None:
                                  'Erros Defensivos /90',
                                  'Eficácia defensiva',
                                  'Nota média']
+            elif posicao_analise == '🛡️Laterais':
+                colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor Estimado', 
+                                'Idade', 
+                                'Salário', 
+                                'Altura', 
+                                'Jogos completos',
+                                'Participação / 90',
+                                'Fintas / 90',
+                                'Minutos pra criar uma chance de perigo',
+                                'Cruzamentos Conseguidos',
+                                'xA + xG /90',
+                                'Gols + A/90',
+                                'Movimentos ofensivos com sucesso',
+                                'Dist / 90',
+                                'Erros Defensivos /90',
+                                'Eficácia defensiva',
+                                'Nota média']
+            elif posicao_analise == '🛡️Volantes':
+                    colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor', 
+                                'Idade', 
+                                'Salário', 
+                                'Jogos Completos',
+                                'Data Final de Contrato',
+                                'Cartões por falta cometida',
+                                '% Pressão ganha/90',
+                                '% Bolas disputadas e ganhas (sem falta)',
+                                'Passes certos  - errados / Jogo',
+                                'Passes em progressão/90',
+                                'Eficácia defensiva',
+                                'xA por passe decisivo',
+                                'Criação / 90',
+                                'Distância /90',
+                                'Nota média']
+            elif posicao_analise == '⚙️Box-To-Box':
+                    colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor', 
+                                'Idade', 
+                                'Salário', 
+                                'Jogos completos',
+                                'Fim de contrato',
+                                'Taxa de Conversão %',
+                                'Participação por jogo (passes, fnt, fin, criação, roubadas de bola, etc)',
+                                '% Acerto',
+                                'xA / Passe Decisivo',
+                                'Dist / 90',
+                                'Último terço/90',
+                                'Nota média']
+            elif posicao_analise == '⚙️Armadores':
+                    colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor', 
+                                'Idade', 
+                                'Salário', 
+                                'Jogos completos',
+                                'Data Final do contrato',
+                                'Gols+ Assist / 90',
+                                'Fintas /90',
+                                'non Pen xG /90',
+                                'xA /90',
+                                '% Cruzamentos certos',
+                                'Passes Decisivos pra uma assistência',
+                                'xA / Passe Decisivo',
+                                'Finalizações no gol/90',
+                                'Conversão dos chutes de fora da  área',
+                                'Ações com Bola T/90',
+                                '% Sucesso de ações com bola',
+                                'Ações que geraram finalizações ao gol /90',
+                                'Chances de perigo criadas /90',
+                                'Participação do jogador a cada 90 minutos (fnt, cabs, pass, finalizaçõs)',
+                                'Participação em passes / 90',
+                                'Passes em construção de jog OF /90',
+                                'Ações no último terço / 90',
+                                'Tentativas de marcar um gol / 90',
+                                'Dist / 90',
+                                'Sprints/90',
+                                'Nota média']
+            elif posicao_analise == '🎯Avançados':
+                    colunas_para_juntar = ['Jogador', 'Equipe',
+                                'Valor Estimado', 
+                                'Idade', 
+                                'Salário', 
+                                'Jogos completos',
+                                'Data Final do contrato',
+                                'Média de gols em toda a Carreira',
+                                'Média gols / partida',
+                                'Média gols + ass / partida',
+                                'Gols Sem Pênalti /90',
+                                'Gols de dentro da área /90',
+                                'Gols de fora da área /90',
+                                '% Cabs ganhos',
+                                'Impedimentos / 90',
+                                'Finalizações no gol/90',
+                                'GPI (Goal Probability Index)',
+                                'Over xG / Under xG per 90',
+                                'Minutos pra acertar uma finalização no gol',
+                                'Minutos pra MARCAR um gol',
+                                'Minutos pra PARTICIPAR de um gol',
+                                'Gols não esperados SEM PÊNALTI',
+                                'xG Conclusion',
+                                'Pass D /90',
+                                'Fintas/90',
+                                '% Des + Pressões concluídas',
+                                'Dist / 90',
+                                'Eficácia ofensiva',
+                                'Participação do jogador a cada 90 minutos',
+                                '% Sucesso de ações com bola',
+                                'Tentativas de marcar um gol  /90',
+                                'Nota média'                              
+                                ]
+                
             df_resultados = df_da_posicao[colunas_para_juntar].copy()
             df_resultados['Nota_Moneyball'] = df_resultado['Nota_Moneyball']
             df_resultados['Equipe'] = df_da_posicao['Equipe']
             df_resultados = df_resultados.sort_values(by='Nota_Moneyball', ascending=False)
-            
-                     
+                    
         # ==========================================
         # LISTA TOP 10 (TEXTO)
         # ==========================================
@@ -254,7 +364,7 @@ if arquivo_upload is not None:
                 Escreva um texto direto e profissional para o treinador. 
                 Recomende a contratação de 3 jogadores justificando o custo-benefício e analisando os dados 
                 em relação aos outros dois candidatos. Ignore a data de contrato.
-                Observe que m é mil e M é milhão. 200m € é igual a 200 mil de euros por exemplo.
+                Observe que m é mil e M é milhão. 200m € é igual a 200 mil de euros por exemplo.
                 Também verifique a diferença entre os preços dos jogadores.
                 Compare a quantidade de partidas também, se for muito baixo em relação aos outros os dados podem ser menos confiáveis.
                 Faça uma análise breve de cada um e depois uma conclusão final recomendando o melhor alvo.
