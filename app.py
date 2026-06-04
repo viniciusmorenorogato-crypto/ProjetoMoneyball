@@ -122,7 +122,7 @@ if arquivo_upload is not None:
             st.warning("Nenhum jogador encontrado com esses filtros. Aumente o orçamento ou a idade!")
         else:
             st.markdown("---")
-            st.subheader("🥇 Principal Alvo")
+            st.subheader("🥇 Principal Alvo de acordo com a nota Moneyball")
             
             col1, col2, col3 = st.columns(3)
             alvo_ouro = df_filtrado.iloc[0] 

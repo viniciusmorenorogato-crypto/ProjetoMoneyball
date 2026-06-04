@@ -67,10 +67,12 @@ def gerar_ranking(df_bruto, posicao):
 
         # Encontra o valor máximo verdadeiro da coluna (ignorando os -1 temporários)
         valor_maximo_real = df_posicao_limpo[df_posicao_limpo['Valor_Numerico'] > 0]['Valor_Numerico'].max()
+        valor_minimo_real = df_posicao_limpo[df_posicao_limpo['Valor_Numerico'] > 0]['Valor_Numerico'].min()
 
         # Substitui todos os inegociáveis (-1) pelo (valor_maximo_real * 2)
         novo_valor_inegociaveis = valor_maximo_real * 2
         df_posicao_limpo.loc[df_posicao_limpo['Valor_Numerico'] == -1, 'Valor_Numerico'] = novo_valor_inegociaveis
+        df_posicao_limpo.loc[df_posicao_limpo['Valor_Numerico'] == -2, 'Valor_Numerico'] = valor_minimo_real + (valor_maximo_real + valor_minimo_real) / 2
 
         # ==========================================
         # 3. TRATAMENTO DO SALÁRIO
