@@ -4,33 +4,33 @@ import main
 import google.generativeai as genai
 import altair as alt
 
-def verifica_senha():
-    """Retorna True se o usuário digitou a senha correta."""
+# def verifica_senha():
+#     """Retorna True se o usuário digitou a senha correta."""
     
-    def senha_inserida():
-        # Compara a senha digitada com a que está salva nos Secrets
-        if st.session_state["senha_digitada"] == st.secrets["SENHA_DO_APP"]:
-            st.session_state["senha_correta"] = True
-            del st.session_state["senha_digitada"]  # Apaga da memória por segurança
-        else:
-            st.session_state["senha_correta"] = False
+#     def senha_inserida():
+#         # Compara a senha digitada com a que está salva nos Secrets
+#         if st.session_state["senha_digitada"] == st.secrets["SENHA_DO_APP"]:
+#             st.session_state["senha_correta"] = True
+#             del st.session_state["senha_digitada"]  # Apaga da memória por segurança
+#         else:
+#             st.session_state["senha_correta"] = False
 
-    if "senha_correta" not in st.session_state:
-        # Primeira vez abrindo o site: mostra a caixa de senha
-        st.text_input("🔑 Digite a senha de acesso:", type="password", on_change=senha_inserida, key="senha_digitada")
-        return False
-    elif not st.session_state["senha_correta"]:
-        # Errou a senha: mostra a caixa de novo com erro
-        st.text_input("🔑 Digite a senha de acesso:", type="password", on_change=senha_inserida, key="senha_digitada")
-        st.error("😕 Senha incorreta. Tente novamente.")
-        return False
-    else:
-        # Senha certa! Libera o acesso.
-        return True
+#     if "senha_correta" not in st.session_state:
+#         # Primeira vez abrindo o site: mostra a caixa de senha
+#         st.text_input("🔑 Digite a senha de acesso:", type="password", on_change=senha_inserida, key="senha_digitada")
+#         return False
+#     elif not st.session_state["senha_correta"]:
+#         # Errou a senha: mostra a caixa de novo com erro
+#         st.text_input("🔑 Digite a senha de acesso:", type="password", on_change=senha_inserida, key="senha_digitada")
+#         st.error("😕 Senha incorreta. Tente novamente.")
+#         return False
+#     else:
+#         # Senha certa! Libera o acesso.
+#         return True
 
-# SE A SENHA NÃO FOR VERDADEIRA, O CÓDIGO PARA AQUI!
-if not verifica_senha():
-    st.stop()
+# # SE A SENHA NÃO FOR VERDADEIRA, O CÓDIGO PARA AQUI!
+# if not verifica_senha():
+#     st.stop()
 
 st.set_page_config(page_title="Scout Moneyball", page_icon="⚽", layout="wide")
 
