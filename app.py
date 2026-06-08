@@ -151,12 +151,12 @@ if arquivo_upload is not None:
                                 'Passes certos  - errados / Jogo', 'Passes em progressão/90',
                                 'Eficácia defensiva', 'xA por passe decisivo', 'Criação / 90',
                                 'Distância /90', 'Nota média']
-            elif posicao_analise == '⚙️Box-To-Box':
+            elif posicao_analise == '🏃‍♂️Box-To-Box':
                 colunas_para_juntar = ['Jogador', 'Equipe', 'Valor', 'Idade', 'Salário', 'Jogos completos',
                                 'Fim de contrato', 'Taxa de Conversão %',
                                 'Participação por jogo (passes, fnt, fin, criação, roubadas de bola, etc)',
                                 '% Acerto', 'xA / Passe Decisivo', 'Dist / 90', 'Último terço/90', 'Nota média']
-            elif posicao_analise == '⚙️Armadores':
+            elif posicao_analise == '🎯Armadores':
                 colunas_para_juntar = ['Jogador', 'Equipe', 'Valor', 'Idade', 'Salário', 'Jogos completos',
                                 'Data Final do contrato', 'Gols+ Assist / 90', 'Fintas /90',
                                 'non Pen xG /90', 'xA /90', '% Cruzamentos certos',
@@ -168,7 +168,7 @@ if arquivo_upload is not None:
                                 'Participação em passes / 90', 'Passes em construção de jog OF /90',
                                 'Ações no último terço / 90', 'Tentativas de marcar um gol / 90',
                                 'Dist / 90', 'Sprints/90', 'Nota média']
-            elif posicao_analise == '🎯Avançados':
+            elif posicao_analise == '⚽Avançados':
                 colunas_para_juntar = ['Jogador', 'Equipe', 'Valor Estimado', 'Idade', 'Salário', 'Jogos completos',
                                 'Data Final do contrato', 'Média de gols em toda a Carreira',
                                 'Média gols / partida', 'Média gols + ass / partida',
