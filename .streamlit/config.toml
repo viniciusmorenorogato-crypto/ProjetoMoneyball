@@ -1,0 +1,70 @@
+# Scout Moneyball — Football Analytics Theme (Dark)
+
+[theme]
+base = "dark"
+primaryColor = "#22C55E"              # Verde campo de futebol
+backgroundColor = "#0A0F0D"          # Preto profundo com leve tom esverdeado
+secondaryBackgroundColor = "#111A14" # Verde escuro para widgets e sidebar
+codeBackgroundColor = "#111A14"
+textColor = "#E8F5E9"                # Branco levemente esverdeado
+linkColor = "#22C55E"
+borderColor = "#1E3A24"
+codeTextColor = "#A5D6A7"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "8px"
+buttonRadius = "8px"
+
+# Tipografia moderna e atlética
+font = "'DM Sans':https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap"
+headingFont = "'Barlow Condensed':https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+headingFontSizes = ["36px", "26px", "20px", "17px", "14px", "12px"]
+headingFontWeights = [800, 700, 600, 600, 500, 500]
+linkUnderline = false
+
+# Cores semânticas esportivas
+greenColor = "#22C55E"    # Positivo / destaque
+redColor = "#EF4444"      # Alerta / risco
+yellowColor = "#EAB308"   # Atenção / médio
+orangeColor = "#F97316"   # Aviso
+blueColor = "#38BDF8"     # Informação
+violetColor = "#A78BFA"   # Acento
+grayColor = "#6B7280"     # Texto secundário
+
+# Paleta para gráficos
+chartCategoricalColors = [
+    "#22C55E",
+    "#38BDF8",
+    "#EAB308",
+    "#EF4444",
+    "#A78BFA",
+    "#F97316",
+    "#6B7280",
+]
+
+chartSequentialColors = [
+    "#052E0A",
+    "#064E10",
+    "#065F1A",
+    "#0A7525",
+    "#168A32",
+    "#22C55E",
+    "#4ADE80",
+    "#86EFAC",
+    "#BBF7D0",
+    "#DCFCE7",
+]
+
+dataframeBorderColor = "#1E3A24"
+dataframeHeaderBackgroundColor = "#111A14"
+
+[theme.sidebar]
+backgroundColor = "#080E0A"
+secondaryBackgroundColor = "#111A14"
+codeBackgroundColor = "#111A14"
+textColor = "#E8F5E9"
+borderColor = "#1E3A24"
+primaryColor = "#22C55E"

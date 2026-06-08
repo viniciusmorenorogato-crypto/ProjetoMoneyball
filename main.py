@@ -17,19 +17,19 @@ def gerar_ranking(df_bruto, posicao):
         try:
             # Recortando da coluna A (posição 0) até a CK (posição 89, limite exclusivo)
             if posicao == '🧤Goleiros':
-                df_posicao_limpo = df_bruto.iloc[:, 0:89]
+                df_posicao_limpo = df_bruto.iloc[:, 0:98]
             elif posicao == '🧱Zagueiros':
-                df_posicao_limpo = df_bruto.iloc[:, 0:138]
+                df_posicao_limpo = df_bruto.iloc[:, 0:139]
             elif posicao == '🛡️Laterais':
-                df_posicao_limpo = df_bruto.iloc[:, 0:109]
+                df_posicao_limpo = df_bruto.iloc[:, 0:111]
             elif posicao == '🛡️Volantes':
-                df_posicao_limpo = df_bruto.iloc[:, 0:104]
-            elif posicao == '⚙️Box-To-Box':
-                df_posicao_limpo = df_bruto.iloc[:, 0:107]
-            elif posicao == '⚙️Armadores':
                 df_posicao_limpo = df_bruto.iloc[:, 0:109]
+            elif posicao == '⚙️Box-To-Box':
+                df_posicao_limpo = df_bruto.iloc[:, 0:120]
+            elif posicao == '⚙️Armadores':
+                df_posicao_limpo = df_bruto.iloc[:, 0:118]
             elif posicao == '🎯Avançados':
-                df_posicao_limpo = df_bruto.iloc[:, 0:140]
+                df_posicao_limpo = df_bruto.iloc[:, 0:147]
 
             # Limpando linhas vazias na primeira coluna
             df_posicao_limpo = df_posicao_limpo.dropna(subset=[df_posicao_limpo.columns[0]])
@@ -471,3 +471,4 @@ def gerar_ranking(df_bruto, posicao):
         return df_final[colunas_visualizacao]
     except Exception as e:
             return f"Erro ao processar: {e}"
+        

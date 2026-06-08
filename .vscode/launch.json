@@ -2,16 +2,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Streamlit",
+            "name": "Moneyball: Debug Streamlit",
             "type": "debugpy",
             "request": "launch",
             "module": "streamlit",
             "args": [
                 "run",
-                "${workspaceFolder}/app.py"
+                "${workspaceFolder}/app.py",
+                "--server.headless",
+                "true"
             ],
-            "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": false,
+            "console": "integratedTerminal"
         }
     ]
 }
