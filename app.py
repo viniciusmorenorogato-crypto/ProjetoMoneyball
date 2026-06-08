@@ -20,7 +20,7 @@ st.sidebar.title(":material/tune: Configurações")
 
 posicao_analise = st.sidebar.selectbox(
     "Posição para análise:", 
-    ['🧤Goleiros', '🧱Zagueiros', '🛡️Laterais', '🛡️Volantes', '⚙️Box-To-Box', '⚙️Armadores', '🎯Avançados'],
+    ['🧤Goleiros', '🧱Zagueiros', '🛡️Laterais', '🛡️Volantes', '🏃‍♂️Box-To-Box', '🎯Armadores', '⚽Avançados'],
     disabled=st.session_state['ja_calculou'] 
 )
 
@@ -34,6 +34,27 @@ arquivo_upload = st.sidebar.file_uploader(
 # ÁREA PRINCIPAL
 # ==========================================
 st.title(f":material/sports_soccer: Moneyball — {posicao_analise}")
+
+if arquivo_upload is None and not st.session_state['ja_calculou']:
+    # Tela de boas-vindas
+    st.title(":material/sports_soccer: Scout Moneyball")
+    with st.container(border=True):
+        st.subheader(":material/info: Como usar")
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            with st.container(border=True):
+                st.markdown(":material/upload_file: **1. Upload**")
+                st.caption("Arraste sua planilha Moneyball (.xlsx ou .xlsm) na barra lateral.")
+        with col_b:
+            with st.container(border=True):
+                st.markdown(":material/tune: **2. Configure**")
+                st.caption("Selecione a posição que deseja analisar.")
+        with col_c:
+            with st.container(border=True):
+                st.markdown(":material/play_arrow: **3. Calcule**")
+                st.caption("Clique em Calcular e explore os rankings e dashboards.")
+    st.stop()
+
 
 if arquivo_upload is not None:
     

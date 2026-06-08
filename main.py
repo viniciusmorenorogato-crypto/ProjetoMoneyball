@@ -15,22 +15,9 @@ def gerar_ranking(df_bruto, posicao):
 
     try:
         try:
-            # Recortando da coluna A (posição 0) até a CK (posição 89, limite exclusivo)
-            if posicao == '🧤Goleiros':
-                df_posicao_limpo = df_bruto.iloc[:, 0:98]
-            elif posicao == '🧱Zagueiros':
-                df_posicao_limpo = df_bruto.iloc[:, 0:139]
-            elif posicao == '🛡️Laterais':
-                df_posicao_limpo = df_bruto.iloc[:, 0:111]
-            elif posicao == '🛡️Volantes':
-                df_posicao_limpo = df_bruto.iloc[:, 0:109]
-            elif posicao == '⚙️Box-To-Box':
-                df_posicao_limpo = df_bruto.iloc[:, 0:120]
-            elif posicao == '⚙️Armadores':
-                df_posicao_limpo = df_bruto.iloc[:, 0:118]
-            elif posicao == '🎯Avançados':
-                df_posicao_limpo = df_bruto.iloc[:, 0:147]
-
+            
+            df_posicao_limpo = df_bruto.loc[:, 'Jogador':'Nota média']
+            
             # Limpando linhas vazias na primeira coluna
             df_posicao_limpo = df_posicao_limpo.dropna(subset=[df_posicao_limpo.columns[0]])
 
@@ -55,11 +42,11 @@ def gerar_ranking(df_bruto, posicao):
             nome_coluna_valor = 'Valor Estimado'
         elif posicao == '🛡️Volantes':
             nome_coluna_valor = 'Valor'
-        elif posicao == '⚙️Box-To-Box':
+        elif posicao == '🏃‍♂️Box-To-Box':
             nome_coluna_valor = 'Valor'
-        elif posicao == '⚙️Armadores':
+        elif posicao == '🎯Armadores':
             nome_coluna_valor = 'Valor'
-        elif posicao == '🎯Avançados':
+        elif posicao == '⚽Avançados':
             nome_coluna_valor = 'Valor Estimado'
 
         # Aplica a limpeza chamando a função do arquivo minhas_funcoes.py
@@ -90,11 +77,11 @@ def gerar_ranking(df_bruto, posicao):
 
         if posicao in ['🛡️Volantes']:
             nome_coluna_contrato = 'Data Final de Contrato' # ou o nome exato que estiver na sua planilha
-        elif posicao in ['⚙️Box-To-Box']:
+        elif posicao in ['🏃‍♂️Box-To-Box']:
             nome_coluna_contrato = 'Fim de contrato' # ou o nome exato que estiver na sua planilha
-        elif posicao in ['⚙️Armadores']:
+        elif posicao in ['🎯Armadores']:
             nome_coluna_contrato = 'Data Final do contrato' # ou o nome exato que estiver na sua planilha
-        elif posicao in ['🎯Avançados']:        
+        elif posicao in ['⚽Avançados']:        
             nome_coluna_contrato = 'Data Final do contrato' # ou o nome exato que estiver na sua planilha
         else:
             nome_coluna_contrato = 'Data final de contrato' # ou o nome exato que estiver na sua planilha 
@@ -177,7 +164,7 @@ def gerar_ranking(df_bruto, posicao):
                                 'Distância /90',
                                 'Nota média'
                                 ]
-        elif posicao == '⚙️Box-To-Box':
+        elif posicao == '🏃‍♂️Box-To-Box':
             colunas_para_ver = ['Valor_Numerico', 
                                 'Idade', 
                                 'Salario_Numerico', 
@@ -191,7 +178,7 @@ def gerar_ranking(df_bruto, posicao):
                                 'Último terço/90',
                                 'Nota média'
                                 ]
-        elif posicao == '⚙️Armadores':
+        elif posicao == '🎯Armadores':
             colunas_para_ver = ['Valor_Numerico', 
                                 'Idade', 
                                 'Salario_Numerico', 
@@ -219,7 +206,7 @@ def gerar_ranking(df_bruto, posicao):
                                 'Sprints/90',
                                 'Nota média'
                                 ]
-        elif posicao == '🎯Avançados':
+        elif posicao == '⚽Avançados':
             colunas_para_ver = ['Valor_Numerico', 
                                 'Idade', 
                                 'Salario_Numerico', 
@@ -318,7 +305,7 @@ def gerar_ranking(df_bruto, posicao):
                 'Idade',
             ]
             nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
-        elif posicao == '⚙️Box-To-Box':
+        elif posicao == '🏃‍♂️Box-To-Box':
             nivel_1 = ['Taxa de Conversão %',
                        'xA / Passe Decisivo',
                        'Dist / 90',
@@ -334,7 +321,7 @@ def gerar_ranking(df_bruto, posicao):
                 'Idade',
             ]
             nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
-        elif posicao == '⚙️Armadores':
+        elif posicao == '🎯Armadores':
             nivel_1 = ['Gols+ Assist / 90',
                        'xA / Passe Decisivo',
                        'Ações no último terço / 90',
@@ -353,7 +340,7 @@ def gerar_ranking(df_bruto, posicao):
                 'Idade',
             ]
             nivel_3 = [col for col in df_posicao_limpo.columns if col not in nivel_1 and col not in nivel_2]
-        elif posicao == '🎯Avançados':
+        elif posicao == '⚽Avançados':
             nivel_1 = ['Média de gols em toda a Carreira',
                        'Média gols / partida',
                        'Nota média',
