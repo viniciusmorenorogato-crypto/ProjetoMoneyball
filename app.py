@@ -126,9 +126,10 @@ COLUNAS_POR_POSICAO = {
 colunas_para_juntar = COLUNAS_POR_POSICAO.get(posicao_analise, ['Jogador', 'Equipe', 'Idade', 'Nota média'])
 colunas_existentes = [c for c in colunas_para_juntar if c in df_da_posicao.columns]
 
-df_resultados = df_da_posicao[colunas_existentes].copy()
-df_resultados['Nota_Moneyball'] = df_resultado['Nota_Moneyball'].values
-df_resultados = df_resultados.sort_values(by='Nota_Moneyball', ascending=False).reset_index(drop=True)
+df_resultados = df_da_posicao[colunas_existentes].copy().reset_index(drop=True)
+df_notas = df_resultado[["Jogador", "Nota_Moneyball"]].reset_index(drop=True)
+df_resultados = df_resultados.merge(df_notas, on="Jogador", how="inner")
+df_resultados = df_resultados.sort_values(by="Nota_Moneyball", ascending=False).reset_index(drop=True)
 df_filtrado = df_resultados.copy()
 
 if df_filtrado.empty:
@@ -146,10 +147,11 @@ st.title(f"🏆 Moneyball — {posicao_analise}")
 # ==========================================
 # ABAS
 # ==========================================
-tab_dashboard, tab_comparativo, tab_scout = st.tabs([
+tab_dashboard, tab_comparativo, tab_scout, tab_ficha = st.tabs([
     ":material/dashboard: Dashboard",
     ":material/bar_chart: Comparativo",
     ":material/smart_toy: Olheiro IA",
+    ":material/person_search: Ficha do Jogador",
 ])
 
 # ==========================================
@@ -176,37 +178,42 @@ with tab_dashboard:
 
     st.space("medium")
 
-    # Top 10 + distribuição
+    # Top 10 + gráfico escolhido pelo usuário
     st.subheader("🏆 Top 10 recomendados")
     col_lista, col_dist = st.columns([1, 2], gap="medium")
 
     with col_lista:
-        with st.container(border=True, height=440):
+        with st.container(border=True, height=400):
             for i, row in enumerate(df_filtrado.head(10).itertuples(), 1):
-                medalha = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"**{i}º**")
-                st.markdown(f"{medalha} {row.Jogador}")
-                st.caption(f"Nota: {row.Nota_Moneyball:.1f} · {int(row.Idade)} anos")
-                if i < 10:
-                    st.divider()
+                medalha = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}º")
+                cols_row = st.columns([1, 3, 2])
+                cols_row[0].markdown(medalha)
+                cols_row[1].markdown(f"**{row.Jogador}**")
+                cols_row[2].caption(f"{row.Nota_Moneyball:.1f} pts")
 
     with col_dist:
-        with st.container(border=True, height=440):
-            st.markdown("**Notas Moneyball por jogador**")
+        with st.container(border=True, height=400):
+            atrib_grafico = st.selectbox(
+                "Dado a exibir no gráfico:",
+                colunas_numericas,
+                index=colunas_numericas.index("Nota_Moneyball") if "Nota_Moneyball" in colunas_numericas else 0,
+                key="dash_atrib_grafico"
+            )
             chart_dist = alt.Chart(df_filtrado.head(10)).mark_bar(
                 color='#22C55E', cornerRadiusEnd=3
             ).encode(
-                x=alt.X('Nota_Moneyball:Q', title='Nota Moneyball'),
+                x=alt.X(f'{atrib_grafico}:Q', title=atrib_grafico),
                 y=alt.Y('Jogador:N', sort='-x', title=''),
-                tooltip=['Jogador', 'Equipe', alt.Tooltip('Nota_Moneyball:Q', title='Nota', format='.1f')]
-            ).properties(height=360)
+                tooltip=['Jogador', 'Equipe', alt.Tooltip(f'{atrib_grafico}:Q', title=atrib_grafico, format='.2f')]
+            ).properties(height=310)
             st.altair_chart(chart_dist)
 
-    # Scatter Nota Moneyball × Nota média
+    # Scatter Nota Moneyball × Nota média — apenas top 10
     st.space("medium")
     st.subheader("📊 Nota Moneyball vs Nota média FM")
     with st.container(border=True):
         if 'Nota média' in df_filtrado.columns:
-            scatter = alt.Chart(df_filtrado).mark_circle(size=90, opacity=0.8).encode(
+            scatter = alt.Chart(df_filtrado.head(10)).mark_circle(size=90, opacity=0.8).encode(
                 x=alt.X('Nota_Moneyball:Q', title='Nota Moneyball', scale=alt.Scale(zero=False)),
                 y=alt.Y('Nota média:Q', title='Nota média FM', scale=alt.Scale(zero=False)),
                 color=alt.Color('Nota_Moneyball:Q', scale=alt.Scale(scheme='greens'), legend=None),
@@ -219,9 +226,9 @@ with tab_dashboard:
         else:
             st.caption("Coluna 'Nota média' não encontrada para esta posição.")
 
-    # Tabela completa
+    # Tabela completa — todos os jogadores
     st.space("medium")
-    st.subheader("📋 Relatório completo — Top 10")
+    st.subheader("📋 Relatório completo")
 
     col_config_tabela = {
         'Nota_Moneyball': st.column_config.ProgressColumn(
@@ -233,7 +240,7 @@ with tab_dashboard:
             'Nota média FM', min_value=0, max_value=20, format='%.1f'
         )
 
-    st.dataframe(df_filtrado.head(10), column_config=col_config_tabela, hide_index=True)
+    st.dataframe(df_filtrado, column_config=col_config_tabela, hide_index=True)
 
 # ==========================================
 # ABA 2: COMPARATIVO
@@ -248,10 +255,11 @@ with tab_comparativo:
         with st.container(border=True):
             st.markdown("**Selecione jogadores**")
             selecionados = st.multiselect(
-                "Até 5 jogadores:",
+                "Até 5 jogadores (busque pelo nome):",
                 options=jogadores_disponiveis,
                 default=jogadores_disponiveis[:3],
-                max_selections=5
+                max_selections=5,
+                placeholder="Digite o nome do jogador..."
             )
             atributo_barra = st.selectbox(
                 "Atributo para comparar:",
@@ -360,3 +368,119 @@ with tab_scout:
         if st.button(":material/refresh: Gerar novo relatório"):
             del st.session_state['relatorio_ia_salvo']
             st.rerun()
+
+# ==========================================
+# ABA 4: FICHA DO JOGADOR
+# ==========================================
+with tab_ficha:
+
+    todos_jogadores = df_filtrado['Jogador'].tolist()
+    lider = df_filtrado.iloc[0]  # melhor jogador = referência para todos os comparativos
+
+    jogador_sel = st.selectbox(
+        "Busque o jogador pelo nome:",
+        options=todos_jogadores,
+        key="ficha_sel",
+        placeholder="Digite o nome do jogador..."
+    )
+
+    jogador = df_filtrado[df_filtrado['Jogador'] == jogador_sel].iloc[0]
+    eh_lider = (jogador_sel == lider['Jogador'])
+    rank_pos = todos_jogadores.index(jogador_sel) + 1
+
+    # Colunas a ignorar no comparativo (identificação, não métricas)
+    COLUNAS_INFO = {'Jogador', 'Equipe', 'Altura', 'Data final de contrato',
+                    'Data Final de Contrato', 'Data Final do contrato',
+                    'Fim de contrato', 'Salário', 'Valor estimado',
+                    'Valor Estimado', 'Valor'}
+
+    # Custo: menor = melhor (inclui Idade)
+    CUSTO = {'Idade', 'Falhas/90', 'Erros Defensivos /90', 'Cartões por falta cometida',
+             'Impedimentos / 90', 'Minutos pra MARCAR um gol',
+             'Minutos pra acertar uma finalização no gol',
+             'Minutos pra PARTICIPAR de um gol',
+             'Minutos pra criar uma chance de perigo'}
+
+    cols_metricas = [c for c in colunas_numericas if c not in COLUNAS_INFO]
+
+    # ---- Cabeçalho da ficha ----
+    col_id, col_nota = st.columns([3, 1], gap="medium")
+
+    with col_id:
+        with st.container(border=True):
+            col_nome, col_eq = st.columns(2)
+            col_nome.markdown(f"### {jogador['Jogador']}")
+            col_eq.markdown(f"**Equipe:** {jogador.get('Equipe', '—')}")
+
+            # Busca val_col e sal_col dentro do df_da_posicao (dados brutos com valor/salário)
+            linha_bruta = df_da_posicao[df_da_posicao['Jogador'] == jogador_sel]
+            val_col = next((c for c in ['Valor estimado', 'Valor Estimado', 'Valor'] if c in df_da_posicao.columns), None)
+            sal_col = 'Salário' if 'Salário' in df_da_posicao.columns else None
+
+            ci1, ci2, ci3 = st.columns(3)
+            ci1.metric("Idade", f"{int(jogador['Idade'])} anos")
+            if val_col and not linha_bruta.empty:
+                v = linha_bruta.iloc[0][val_col]
+                try:
+                    v_num = float(str(v).replace("€","").replace("M","e6").replace("m","e3").replace(",",".").replace(" ",""))
+                    ci2.metric("Valor estimado", f"€ {v_num/1_000_000:.1f}M")
+                except Exception:
+                    ci2.metric("Valor estimado", str(v))
+            if sal_col and not linha_bruta.empty:
+                s = linha_bruta.iloc[0][sal_col]
+                try:
+                    s_num = float(str(s).replace("€","").replace("m","e3").replace(",",".").replace(" ","").replace("/sem","").replace("p/s",""))
+                    ci3.metric("Salário", f"€ {s_num/1_000:.0f}k/sem")
+                except Exception:
+                    ci3.metric("Salário", str(s))
+
+    with col_nota:
+        with st.container(border=True):
+            nota_jog = jogador['Nota_Moneyball']
+            nota_lider = lider['Nota_Moneyball']
+            delta_nota = nota_jog - nota_lider if not eh_lider else None
+            st.metric(
+                "Nota Moneyball",
+                f"{nota_jog:.1f} / 100",
+                delta=f"{delta_nota:+.1f} vs 1º" if delta_nota is not None else "🥇 Líder do ranking",
+                delta_color="normal" if delta_nota is None else "inverse" if delta_nota < 0 else "normal"
+            )
+            st.metric("Posição no ranking", f"{rank_pos}º de {len(todos_jogadores)}")
+
+    st.space("small")
+
+    # ---- Métricas com comparativo vs líder ----
+    st.markdown("**Métricas vs melhor do ranking**")
+
+    COLUNAS_BLOCO = 4
+    blocos = [cols_metricas[i:i+COLUNAS_BLOCO] for i in range(0, len(cols_metricas), COLUNAS_BLOCO)]
+
+    for bloco in blocos:
+        cols = st.columns(len(bloco))
+        for col_w, metrica in zip(cols, bloco):
+            try:
+                val_jog = jogador[metrica]
+                val_ref = lider[metrica]
+
+                if pd.isna(val_jog) or pd.isna(val_ref):
+                    col_w.metric(metrica, "—")
+                    continue
+
+                val_str = f"{val_jog:.2f}" if isinstance(val_jog, float) else str(int(val_jog))
+
+                if eh_lider:
+                    col_w.metric(metrica, val_str)
+                else:
+                    diff = val_jog - val_ref
+                    # Para custo: diff negativo = melhor (verde), positivo = pior (vermelho) → inverse
+                    # Para benefício: diff positivo = melhor (verde) → normal
+                    delta_color = "inverse" if metrica in CUSTO else "normal"
+                    col_w.metric(
+                        metrica,
+                        val_str,
+                        delta=f"{diff:+.2f}" if isinstance(val_jog, float) else f"{diff:+.0f}",
+                        delta_color=delta_color,
+                        help=f"Referência ({lider['Jogador']}): {val_ref:.2f}" if isinstance(val_ref, float) else f"Referência: {val_ref}"
+                    )
+            except Exception:
+                col_w.metric(metrica, "—")

@@ -454,8 +454,22 @@ def gerar_ranking(df_bruto, posicao):
 
         # Escolha as colunas para o Print final
         colunas_visualizacao = ['Jogador', 'Equipe' ,'Nota_Moneyball', 'Valor estimado', 'Idade']
+        print(f"\nNota Moneyball calculada! Exibindo a nota de cada jogador:")
+        print(df_final[['Jogador', 'Nota_Moneyball']].head(50))
 
         return df_final[colunas_visualizacao]
     except Exception as e:
             return f"Erro ao processar: {e}"
         
+# Bloco de teste direto
+# if __name__ == "__main__":
+#     import pandas as pd
+    
+#     print("Iniciando depuração isolada...")
+#     # 1. Lê a sua planilha local bruta
+#     banco_completo = pd.read_excel("Moneyball FM26.xlsm", engine='openpyxl')
+    
+#     # 2. Chama a sua função simulando o que o app.py faria
+#     resultado = gerar_ranking(banco_completo, posicao='🎯Armadores')
+    
+#     print("Fim da depuração!")
