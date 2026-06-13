@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import main
+from main import CRITERIOS_PADRAO
 import google.generativeai as genai
 import altair as alt
 import math
@@ -92,6 +93,10 @@ if 'ja_calculou' not in st.session_state:
     st.session_state['ja_calculou'] = False
 if 'rankings' not in st.session_state:
     st.session_state['rankings'] = {}  # {posicao: df_resultado}
+if 'niveis_usuario' not in st.session_state:
+    st.session_state['niveis_usuario'] = {}  # {posicao: {criterio: nivel}}
+if 'configurado' not in st.session_state:
+    st.session_state['configurado'] = {}  # {posicao: bool}
 
 # ==========================================
 # CSS GLOBAL
@@ -223,31 +228,59 @@ col_btn1, col_btn2 = st.sidebar.columns(2)
 if arquivo_upload is not None and not st.session_state['ja_calculou']:
     if col_btn1.button("🚀 Calcular", use_container_width=True):
         with st.spinner("Processando todas as posições..."):
-            banco = pd.read_excel(arquivo_upload, sheet_name=None, engine='openpyxl')
-            st.session_state['banco_de_dados_completo'] = banco
+            try:
+                banco = st.session_state.get('banco_de_dados_completo') or                         pd.read_excel(arquivo_upload, sheet_name=None, engine='openpyxl')
+                st.session_state['banco_de_dados_completo'] = banco
+            except Exception as e:
+                st.error(f"Não foi possível ler a planilha: {e}")
+                st.stop()
+
             rankings = {}
+            erros_calc = {}
             for pos in POSICOES:
                 if pos in banco:
                     try:
-                        resultado = main.gerar_ranking(banco[pos], pos)
-                        rankings[pos] = resultado
-                    except Exception:
-                        pass
-            st.session_state['rankings'] = rankings
-            st.session_state['ja_calculou'] = True
-            st.rerun()
+                        niveis = st.session_state['niveis_usuario'].get(pos)
+                        resultado = main.gerar_ranking(banco[pos], pos, niveis_usuario=niveis)
+                        if isinstance(resultado, str):
+                            erros_calc[pos] = resultado
+                        else:
+                            rankings[pos] = resultado
+                            st.session_state['configurado'][pos] = True
+                    except ValueError as e:
+                        erros_calc[pos] = str(e)
+                    except Exception as e:
+                        erros_calc[pos] = f"Erro inesperado: {e}"
+
+            if erros_calc:
+                st.session_state['erros_calculo'] = erros_calc
+
+            if not rankings:
+                st.error("Nenhuma posição pôde ser calculada. Verifique os critérios e a planilha.")
+                if erros_calc:
+                    for pos, msg in erros_calc.items():
+                        st.warning(f"**{pos}:** {msg}")
+            else:
+                st.session_state['rankings'] = rankings
+                st.session_state['ja_calculou'] = True
+                st.rerun()
 
 if st.session_state['ja_calculou']:
     if col_btn2.button("🔄 Recomeçar", use_container_width=True):
-        for key in ['ja_calculou', 'rankings', 'banco_de_dados_completo', 'secao_ativa']:
-            if key in st.session_state:
-                del st.session_state[key]
-        for pos in POSICOES:
-            k = f'relatorio_ia_{pos}'
-            if k in st.session_state:
-                del st.session_state[k]
-        st.session_state['ja_calculou'] = False
+        st.session_state['reiniciando'] = True
         st.rerun()
+
+if st.session_state.get('reiniciando'):
+    for key in ['ja_calculou', 'rankings', 'banco_de_dados_completo',
+                'secao_ativa', 'niveis_usuario', 'configurado', 'erros_calculo', 'reiniciando']:
+        if key in st.session_state:
+            del st.session_state[key]
+    for pos in POSICOES:
+        k = f'relatorio_ia_{pos}'
+        if k in st.session_state:
+            del st.session_state[k]
+    st.session_state['ja_calculou'] = False
+    st.rerun()
 
 st.sidebar.markdown(
     "<div class='sidebar-footer'>Feito por <strong>Vinícius Rogato</strong></div>",
@@ -257,7 +290,60 @@ st.sidebar.markdown(
 # ==========================================
 # TELA DE BOAS-VINDAS
 # ==========================================
-if not st.session_state['ja_calculou']:
+# ==========================================
+# PRÉ-CARREGAMENTO: lê a planilha assim que o upload acontece
+# (antes de calcular, para mostrar as abas e tela de critérios)
+# ==========================================
+if arquivo_upload is None and not st.session_state['ja_calculou']:
+    # Planilha removida — limpa banco para voltar à tela inicial
+    if 'banco_de_dados_completo' in st.session_state:
+        del st.session_state['banco_de_dados_completo']
+        if 'configurado' in st.session_state:
+            del st.session_state['configurado']
+        if 'niveis_usuario' in st.session_state:
+            del st.session_state['niveis_usuario']
+        st.rerun()
+
+if arquivo_upload is not None and 'banco_de_dados_completo' not in st.session_state:
+    with st.spinner("⏳ Lendo planilha..."):
+        st.session_state['banco_de_dados_completo'] = pd.read_excel(
+            arquivo_upload, sheet_name=None, engine='openpyxl'
+        )
+    st.rerun()
+
+# Tela intermediária de reiniciando (renderiza antes do rerun limpar o estado)
+if st.session_state.get('reiniciando'):
+    st.markdown("""
+    <style>
+    .mb-loading-screen {
+        position: fixed; inset: 0;
+        background: #070C09;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 24px; z-index: 9999;
+    }
+    .mb-loading-spinner {
+        width: 52px; height: 52px;
+        border: 3px solid #1E3A24;
+        border-top-color: #22C55E;
+        border-radius: 50%;
+        animation: mbspin 0.75s linear infinite;
+    }
+    @keyframes mbspin { to { transform: rotate(360deg); } }
+    .mb-loading-label {
+        font-size: 0.8rem; font-weight: 700;
+        color: #4ADE80; letter-spacing: 3px;
+        text-transform: uppercase;
+    }
+    </style>
+    <div class="mb-loading-screen">
+        <div class="mb-loading-spinner"></div>
+        <div class="mb-loading-label">Reiniciando...</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.session_state:
 
     st.markdown("""
     <style>
@@ -374,21 +460,40 @@ if not st.session_state['ja_calculou']:
 
         st.space("medium")
 
-        # ---- Última atualização ----
+        # ---- Patch notes ----
         st.markdown("### 🔄 Última atualização")
         st.space("small")
-        novidades = [
-            "Abas por posição — todas processadas de uma vez",
-            "Navegação por seções na barra lateral com botões animados",
-            "Ficha do jogador com estatísticas completas e comparativo vs líder",
-            "Filtros de disponibilidade (à venda / valor desconhecido)",
-            "Comparativo interativo com scatter e ranking por atributo",
-            "Olheiro IA individual por posição",
-            "Tela inicial com tutorial, parceiros e changelog",
+
+        st.markdown('<span class="update-tag">v2.2 · Jun 2025</span>', unsafe_allow_html=True)
+        v22 = [
+            "Configuração de critérios AHP por posição com interface estilo menu de jogo",
+            "Opção de Ignorar critérios — excluídos do cálculo AHP",
+            "Cálculo automático com pesos padrão para posições não configuradas",
+            "Tratamento completo de erros e exceções em todo o sistema",
+            "Tela de loading ao fazer upload e ao reiniciar",
+            "Ficha do jogador reformulada com design de cartão e gráfico de nota circular",
+            "Planilha completa com todos os dados originais do upload",
+            "Ranking visual no comparativo substituindo gráfico de barras",
         ]
-        st.markdown('<span class="update-tag">v2.1 · Jun 2025</span>', unsafe_allow_html=True)
-        for n in novidades:
+        for n in v22:
             st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
+
+        st.space("small")
+        with st.expander("📋 v2.1 · Jun 2025 — notas anteriores"):
+            v21 = [
+                "Abas por posição — todas processadas de uma vez",
+                "Navegação por seções na barra lateral com botões animados",
+                "Ficha do jogador com estatísticas completas e comparativo vs líder",
+                "Filtros de disponibilidade (à venda / valor desconhecido)",
+                "Comparativo interativo com scatter e ranking por atributo",
+                "Olheiro IA individual por posição",
+                "Tela inicial com tutorial, parceiros e changelog",
+                "Banner FM26 com degradê na área principal",
+                "Canais recomendados com cards animados e descrição dos plugins",
+                "Assinatura do criador fixada no rodapé da sidebar",
+            ]
+            for n in v21:
+                st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
 
     with col_right:
         st.markdown("### 📺 Canais recomendados")
@@ -470,11 +575,16 @@ if not st.session_state['ja_calculou']:
 
     st.stop()
 
+
+
 # ==========================================
 # DADOS CARREGADOS
 # ==========================================
-banco_completo = st.session_state['banco_de_dados_completo']
-rankings = st.session_state['rankings']
+banco_completo = st.session_state.get('banco_de_dados_completo', {})
+rankings = st.session_state.get('rankings', {})
+
+# Mostra erros de cálculo por posição (se houver)
+erros_calculo = st.session_state.get('erros_calculo', {})
 
 # ==========================================
 # HELPER: monta df_filtrado para uma posição
@@ -482,50 +592,70 @@ rankings = st.session_state['rankings']
 def montar_df(posicao):
     if posicao not in rankings or posicao not in banco_completo:
         return None, None
-    df_resultado = rankings[posicao].copy()
-    df_da_posicao = banco_completo[posicao].copy()
+    try:
+        df_resultado = rankings[posicao].copy()
+        df_da_posicao = banco_completo[posicao].copy()
 
-    colunas_candidatas = COLUNAS_POR_POSICAO.get(posicao, ['Jogador', 'Equipe', 'Idade', 'Nota média'])
-    colunas_existentes = [c for c in colunas_candidatas if c in df_da_posicao.columns]
+        colunas_candidatas = COLUNAS_POR_POSICAO.get(posicao, ['Jogador', 'Equipe', 'Idade', 'Nota média'])
+        colunas_existentes = [c for c in colunas_candidatas if c in df_da_posicao.columns]
 
-    df_res = df_da_posicao[colunas_existentes].copy().reset_index(drop=True)
-    df_notas = df_resultado[["Jogador", "Nota_Moneyball"]].reset_index(drop=True)
-    df_res = df_res.merge(df_notas, on="Jogador", how="inner")
-    df_res = df_res.sort_values(by="Nota_Moneyball", ascending=False).reset_index(drop=True)
-    df_filtrado = df_res.copy()
+        if not colunas_existentes:
+            return None, df_da_posicao
 
-    # Filtros de disponibilidade
-    if ocultar_nao_a_venda or ocultar_valor_desconhecido:
-        val_col_filtro = next((c for c in ['Valor estimado', 'Valor Estimado', 'Valor']
-                               if c in df_da_posicao.columns), None)
-        if val_col_filtro:
-            lookup_valor = (
-                df_da_posicao[['Jogador', val_col_filtro]]
-                .drop_duplicates(subset='Jogador', keep='first')
-                .set_index('Jogador')[val_col_filtro]
-            )
-            val_str = df_filtrado['Jogador'].map(lookup_valor).astype(str).str.strip().str.lower()
-            if ocultar_nao_a_venda:
-                mask = val_str.isin(['não está à venda', 'nao esta a venda', 'not for sale',
-                                     'n/d', 'indisponível', '-', 'nan', ''])
-                df_filtrado = df_filtrado[~mask]
-            if ocultar_valor_desconhecido:
-                mask = val_str.isin(['desconhecido', 'unknown', 'n/a', 'nan', '', '-'])
-                df_filtrado = df_filtrado[~mask]
-            df_filtrado = df_filtrado.reset_index(drop=True)
+        df_res = df_da_posicao[colunas_existentes].copy().reset_index(drop=True)
+        df_notas = df_resultado[["Jogador", "Nota_Moneyball"]].reset_index(drop=True)
+        df_res = df_res.merge(df_notas, on="Jogador", how="inner")
+        df_res = df_res.sort_values(by="Nota_Moneyball", ascending=False).reset_index(drop=True)
+        df_filtrado = df_res.copy()
 
-    return df_filtrado, df_da_posicao
+        # Filtros de disponibilidade
+        if ocultar_nao_a_venda or ocultar_valor_desconhecido:
+            val_col_filtro = next((c for c in ['Valor estimado', 'Valor Estimado', 'Valor']
+                                   if c in df_da_posicao.columns), None)
+            if val_col_filtro:
+                lookup_valor = (
+                    df_da_posicao[['Jogador', val_col_filtro]]
+                    .drop_duplicates(subset='Jogador', keep='first')
+                    .set_index('Jogador')[val_col_filtro]
+                )
+                val_str = df_filtrado['Jogador'].map(lookup_valor).astype(str).str.strip().str.lower()
+                if ocultar_nao_a_venda:
+                    mask = val_str.isin(['não está à venda', 'nao esta a venda', 'not for sale',
+                                         'n/d', 'indisponível', '-', 'nan', ''])
+                    df_filtrado = df_filtrado[~mask]
+                if ocultar_valor_desconhecido:
+                    mask = val_str.isin(['desconhecido', 'unknown', 'n/a', 'nan', '', '-'])
+                    df_filtrado = df_filtrado[~mask]
+                df_filtrado = df_filtrado.reset_index(drop=True)
+
+        return df_filtrado, df_da_posicao
+    except Exception:
+        return None, banco_completo.get(posicao)
 
 # ==========================================
 # HELPER: renderiza seção de uma posição
 # ==========================================
 def render_secao(posicao, df_filtrado, df_da_posicao, secao):
+    # Mostra erro de cálculo se houver
+    if posicao in erros_calculo:
+        st.error(f"⚠️ Erro ao calcular {posicao}: {erros_calculo[posicao]}")
+        if "Ignorar" in erros_calculo[posicao] or "critérios" in erros_calculo[posicao].lower():
+            st.info("💡 Clique em **🔧 Reconfigurar critérios** abaixo e ative pelo menos 2 atributos.")
+        return
+
     if df_filtrado is None or df_filtrado.empty:
-        st.warning(f"Sem dados disponíveis para {posicao}.")
+        st.warning(f"Nenhum jogador encontrado para {posicao} com os filtros aplicados.")
+        return
+
+    if 'Jogador' not in df_filtrado.columns:
+        st.error(f"Estrutura de dados inválida para {posicao}.")
         return
 
     alvo = df_filtrado.iloc[0]
     colunas_numericas = df_filtrado.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    if not colunas_numericas:
+        st.warning(f"Nenhuma coluna numérica encontrada para {posicao}.")
+        return
 
     # ------------------------------------------
     if secao == "dashboard":
@@ -807,7 +937,7 @@ def render_secao(posicao, df_filtrado, df_da_posicao, secao):
             color: #6B7280;
         }}
         .ficha-nota-circle {{
-            min-width: 88px;
+            min-width: 96px;
             height: 88px;
             border-radius: 50%;
             background: conic-gradient(#22C55E {nota_pct}%, #1E3A24 0%);
@@ -1025,16 +1155,331 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-posicoes_disponiveis = [p for p in POSICOES if p in rankings]
-
-if not posicoes_disponiveis:
-    st.warning("Nenhuma posição processada com sucesso.")
-    st.stop()
+# Antes do cálculo: usa as abas do arquivo carregado
+# Após o cálculo: usa as posições que foram processadas com sucesso
+if st.session_state['ja_calculou']:
+    posicoes_disponiveis = [p for p in POSICOES if p in rankings]
+    if not posicoes_disponiveis:
+        st.warning("Nenhuma posição processada com sucesso.")
+        st.stop()
+else:
+    banco_pre = st.session_state.get('banco_de_dados_completo', {})
+    posicoes_disponiveis = [p for p in POSICOES if p in banco_pre]
+    if not posicoes_disponiveis:
+        st.info("Faça o upload da planilha e clique em **🚀 Calcular** para começar.")
+        st.stop()
 
 abas = st.tabs(posicoes_disponiveis)
 
+# Nomes amigáveis para os critérios internos
+NOMES_AMIGAVEIS = {
+    'Valor_Numerico': 'Valor de mercado',
+    'Salario_Numerico': 'Salário',
+    'Contrato_Numerico': 'Fim de contrato',
+}
+
+NIVEL_LABELS = {
+    1: ("🔴 Muito importante",   1),
+    2: ("🟡 Importante",          2),
+    3: ("⚪ Menos importante",    3),
+}
+
 for aba, posicao in zip(abas, posicoes_disponiveis):
     with aba:
+
+        # ---- Configuração de critérios — estilo menu de jogo ----
+        if not st.session_state['ja_calculou'] or not st.session_state['configurado'].get(posicao):
+
+            padrao = CRITERIOS_PADRAO.get(posicao, {})
+            colunas_cfg = padrao.get('colunas', [])
+            nivel_1_pad = padrao.get('nivel_1', [])
+            nivel_2_pad = padrao.get('nivel_2', [])
+
+            def nivel_padrao(c):
+                if c in nivel_1_pad: return 1
+                if c in nivel_2_pad: return 2
+                return 3
+
+            niveis_atuais = st.session_state['niveis_usuario'].get(posicao, {})
+
+            st.markdown("""
+            <style>
+            /* ── Painel principal ── */
+            .gm-panel {
+                background: #070C09;
+                border: 1px solid #1A3020;
+                border-radius: 4px;
+                overflow: hidden;
+                margin-bottom: 20px;
+                box-shadow: 0 0 40px rgba(34,197,94,0.04);
+            }
+            /* ── Topo estilo HUD ── */
+            .gm-topbar {
+                background: #0A1A0E;
+                border-bottom: 2px solid #22C55E;
+                padding: 14px 24px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .gm-topbar-title {
+                font-size: 0.65rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 3px;
+                color: #22C55E;
+            }
+            .gm-topbar-pos {
+                font-size: 0.75rem;
+                color: #4ADE80;
+                font-weight: 600;
+                letter-spacing: 1px;
+            }
+            .gm-topbar-hint {
+                font-size: 0.6rem;
+                color: #374151;
+                text-transform: uppercase;
+                letter-spacing: 1.5px;
+            }
+            /* ── Legenda de níveis ── */
+            .gm-legend {
+                display: flex;
+                gap: 0;
+                border-bottom: 1px solid #1A3020;
+            }
+            .gm-legend-item {
+                flex: 1;
+                padding: 8px 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                border-right: 1px solid #1A3020;
+            }
+            .gm-legend-item:last-child { border-right: none; }
+            .gm-legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+            .gm-legend-label { font-size:0.68rem; color:#6B7280; }
+            .gm-legend-label b { color:#9CA3AF; }
+            /* ── Separador de grupo ── */
+            .gm-group-sep {
+                background: #0A1A0E;
+                border-top: 1px solid #1A3020;
+                border-bottom: 1px solid #1A3020;
+                padding: 6px 24px;
+                font-size: 0.58rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 2.5px;
+                color: #22C55E55;
+            }
+            /* ── Linha de critério ── */
+            .gm-row {
+                display: flex;
+                align-items: center;
+                padding: 0 24px;
+                border-bottom: 1px solid #0F1F14;
+                min-height: 52px;
+                transition: background .15s;
+            }
+            .gm-row:hover { background: #0A1A0E88; }
+            .gm-row:last-child { border-bottom: none; }
+            .gm-row-name {
+                flex: 1;
+                font-size: 0.8rem;
+                color: #C4D4C8;
+                font-weight: 500;
+            }
+            .gm-row-name span {
+                font-size: 0.6rem;
+                color: #374151;
+                margin-left: 6px;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+            }
+            /* ── Slots de nível (visual) — o radio real fica invisível em cima ── */
+            .gm-slots { display:flex; gap:4px; }
+            .gm-slot {
+                width: 96px;
+                height: 30px;
+                border-radius: 3px;
+                border: 1px solid #1A3020;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.62rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                color: #374151;
+                cursor: pointer;
+                transition: all .15s;
+            }
+            /* Radio nativo sobreposto — invisível mas clicável */
+            div[data-testid="stRadio"] { margin: 0 !important; }
+            div[data-testid="stRadio"] > div[role="radiogroup"] {
+                display: flex !important;
+                gap: 4px !important;
+                flex-direction: row !important;
+            }
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+                width: 96px !important;
+                height: 30px !important;
+                border-radius: 3px !important;
+                border: 1px solid #1A3020 !important;
+                background: transparent !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                font-size: 0.62rem !important;
+                font-weight: 700 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.8px !important;
+                color: #374151 !important;
+                cursor: pointer !important;
+                transition: all .15s !important;
+                padding: 0 !important;
+            }
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+                border-color: #22C55E66 !important;
+                color: #9CA3AF !important;
+                background: #0A1A0E !important;
+            }
+            /* Slots ativos por posição no grupo */
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(1):has(input:checked) {
+                background: #7F1D1D !important;
+                border-color: #EF4444 !important;
+                color: #FCA5A5 !important;
+                box-shadow: 0 0 8px #EF444433 !important;
+            }
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(2):has(input:checked) {
+                background: #713F12 !important;
+                border-color: #EAB308 !important;
+                color: #FDE68A !important;
+                box-shadow: 0 0 8px #EAB30833 !important;
+            }
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(3):has(input:checked) {
+                background: #1F2937 !important;
+                border-color: #6B7280 !important;
+                color: #D1D5DB !important;
+            }
+            /* Slot Ignorar — 4º slot */
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(4) {
+                border-color: #1A1A1A !important;
+                color: #292929 !important;
+            }
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(4):hover {
+                border-color: #EF444466 !important;
+                color: #EF4444 !important;
+                background: #1A0808 !important;
+            }
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(4):has(input:checked) {
+                background: #0D0000 !important;
+                border-color: #7F1D1D !important;
+                color: #EF4444 !important;
+                text-decoration: line-through !important;
+                opacity: 0.7 !important;
+            }
+            /* Esconde o círculo do radio e o label de texto padrão */
+            div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child { display:none !important; }
+            div[data-testid="stRadio"] > label { display:none !important; }
+            </style>
+            """, unsafe_allow_html=True)
+
+            # Topbar HUD
+            st.markdown(f"""
+            <div class="gm-panel">
+              <div class="gm-topbar">
+                <span class="gm-topbar-title">◈ Configuração de critérios AHP</span>
+                <span class="gm-topbar-pos">{posicao}</span>
+                <span class="gm-topbar-hint">Selecione a importância de cada atributo</span>
+              </div>
+              <div class="gm-legend">
+                <div class="gm-legend-item">
+                  <div class="gm-legend-dot" style="background:#EF4444"></div>
+                  <div class="gm-legend-label"><b>Muito importante</b> · Peso máximo</div>
+                </div>
+                <div class="gm-legend-item">
+                  <div class="gm-legend-dot" style="background:#EAB308"></div>
+                  <div class="gm-legend-label"><b>Importante</b> · Peso médio</div>
+                </div>
+                <div class="gm-legend-item">
+                  <div class="gm-legend-dot" style="background:#4B5563"></div>
+                  <div class="gm-legend-label"><b>Menos importante</b> · Peso mínimo</div>
+                </div>
+                <div class="gm-legend-item">
+                  <div class="gm-legend-dot" style="background:#1A1A1A; border:1px solid #374151"></div>
+                  <div class="gm-legend-label"><b>Ignorar</b> · Fora do cálculo</div>
+                </div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            GRUPOS = [
+                ("PRIMÁRIOS — padrão: muito importante", [c for c in colunas_cfg if nivel_padrao(c) == 1]),
+                ("SECUNDÁRIOS — padrão: importante",     [c for c in colunas_cfg if nivel_padrao(c) == 2]),
+                ("AUXILIARES — padrão: menos importante",[c for c in colunas_cfg if nivel_padrao(c) == 3]),
+            ]
+            opcoes_nivel = {1: "▲  Máximo", 2: "◆  Médio", 3: "▼  Mínimo", 0: "✕  Ignorar"}
+
+            with st.form(key=f"form_criterios_{posicao}"):
+                selecoes = {}
+                for grupo_titulo, grupo_crit in GRUPOS:
+                    if not grupo_crit:
+                        continue
+                    st.markdown(f'<div class="gm-group-sep">{grupo_titulo}</div>', unsafe_allow_html=True)
+                    for criterio in grupo_crit:
+                        nome_exib = NOMES_AMIGAVEIS.get(criterio, criterio)
+                        _opcoes = [1, 2, 3, 0]
+                        _val = niveis_atuais.get(criterio, nivel_padrao(criterio))
+                        default_idx = _opcoes.index(_val) if _val in _opcoes else 0
+                        col_nome, col_radio = st.columns([2, 3])
+                        with col_nome:
+                            st.markdown(
+                                f'<div class="gm-row"><span class="gm-row-name">{nome_exib}</span></div>',
+                                unsafe_allow_html=True
+                            )
+                        with col_radio:
+                            selecoes[criterio] = st.radio(
+                                nome_exib,
+                                options=[1, 2, 3, 0],
+                                format_func=lambda x: opcoes_nivel[x],
+                                index=default_idx,
+                                horizontal=True,
+                                key=f"radio_{posicao}_{criterio}",
+                                label_visibility="collapsed"
+                            )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                submitted = st.form_submit_button(
+                    "✅  Salvar configuração desta posição",
+                    use_container_width=True,
+                    type="primary"
+                )
+                if submitted:
+                    ativos = [c for c, v in selecoes.items() if v != 0]
+                    if len(ativos) < 2:
+                        st.error("⚠️ Selecione pelo menos 2 critérios ativos (não Ignorar) para continuar.")
+                    else:
+                        st.session_state['niveis_usuario'][posicao] = dict(selecoes)
+                        st.session_state['configurado'][posicao] = True
+                        st.rerun()
+
+            # Opção de pular — só aparece antes do cálculo
+            if not st.session_state['ja_calculou']:
+                st.caption("💡 Você também pode clicar em **🚀 Calcular** direto na barra lateral — as posições não configuradas usarão os pesos padrão.")
+
+            continue
+
+        # Botão de reconfigurar esta posição (aparece só após calcular)
+        if st.session_state['ja_calculou']:
+            if st.button(f"🔧 Reconfigurar critérios — {posicao}", key=f"reconfig_{posicao}"):
+                st.session_state['configurado'][posicao] = False
+                if posicao in st.session_state['rankings']:
+                    del st.session_state['rankings'][posicao]
+                k_ia = f'relatorio_ia_{posicao}'
+                if k_ia in st.session_state:
+                    del st.session_state[k_ia]
+                st.rerun()
+
         df_filtrado, df_da_posicao = montar_df(posicao)
 
         if secao_ativa == "planilha":
