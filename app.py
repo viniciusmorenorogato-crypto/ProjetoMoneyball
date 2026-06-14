@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import main
-from main import CRITERIOS_PADRAO
+from main import CRITERIOS_PADRAO, POSICOES_OVERALL, COLUNAS_IDENTIFICACAO_OVERALL, extrair_estatisticas_time, gerar_olheiro_time_prompt
 import google.generativeai as genai
 import altair as alt
 import math
@@ -32,6 +32,36 @@ div[data-testid="stTabsContent"] > div {
 # ==========================================
 POSICOES = ['🧤Goleiros', '🧱Zagueiros', '🛡️Laterais', '🛡️Volantes',
             '🏃‍♂️Box-To-Box', '🎯Armadores', '⚽Avançados']
+
+# Aba de Time (dashboard agregado + olheiro do time, sem ranking de jogadores)
+POSICAO_TIME = '📊Time Estatísticas'
+# Aba de Overall (Rating Overall via AHP)
+POSICAO_OVERALL = '🔍Overall Análise'
+
+# Abas que usam Rating Overall (sem lógica de custo/benefício Moneyball)
+POSICOES_TODAS = POSICOES + POSICOES_OVERALL
+
+# Modos de análise disponíveis
+MODOS = {
+    'posicoes': {
+        'label': 'Posições',
+        'icone': '⚽',
+        'descricao': 'Rankings Moneyball por posição (Goleiros, Zagueiros, Laterais...)',
+        'abas': POSICOES,
+    },
+    'time': {
+        'label': 'Time',
+        'icone': '📊',
+        'descricao': 'Dashboard agregado da equipe e Olheiro do Time',
+        'abas': [POSICAO_TIME],
+    },
+    'overall': {
+        'label': 'Overall',
+        'icone': '🔍',
+        'descricao': 'Rating Overall dos jogadores via AHP, baseado em desempenho',
+        'abas': [POSICAO_OVERALL],
+    },
+}
 
 COLUNAS_POR_POSICAO = {
     '🧤Goleiros': ['Jogador', 'Equipe', 'Valor estimado', 'Idade', 'Salário', 'Altura',
@@ -97,6 +127,10 @@ if 'niveis_usuario' not in st.session_state:
     st.session_state['niveis_usuario'] = {}  # {posicao: {criterio: nivel}}
 if 'configurado' not in st.session_state:
     st.session_state['configurado'] = {}  # {posicao: bool}
+if 'modo_analise' not in st.session_state:
+    st.session_state['modo_analise'] = None  # 'posicoes' | 'time' | 'overall'
+if 'modo_confirmado' not in st.session_state:
+    st.session_state['modo_confirmado'] = False
 
 # ==========================================
 # CSS GLOBAL
@@ -192,18 +226,32 @@ ocultar_valor_desconhecido = st.sidebar.checkbox(
     help="Remove jogadores cujo valor de mercado não foi informado."
 )
 
-# Navegação por seção — botões animados via session_state
-SECOES_LISTA = [
-    ("📊", "Dashboard", "dashboard"),
-    ("📈", "Comparativo", "comparativo"),
-    ("🤖", "Olheiro IA", "scout"),
-    ("🔍", "Ficha do Jogador", "ficha"),
-    ("📋", "Planilha", "planilha"),
-]
+# Navegação por seção — depende do modo de análise escolhido
+SECOES_POR_MODO = {
+    'posicoes': [
+        ("📊", "Dashboard", "dashboard"),
+        ("📈", "Comparativo", "comparativo"),
+        ("🤖", "Olheiro IA", "scout"),
+        ("🔍", "Ficha do Jogador", "ficha"),
+        ("📋", "Planilha", "planilha"),
+    ],
+    'time': [
+        ("📊", "Dashboard do Time", "dashboard_time"),
+        ("🤖", "Olheiro do Time", "scout_time"),
+    ],
+    'overall': [
+        ("📊", "Dashboard", "dashboard"),
+        ("📈", "Comparação", "comparativo"),
+        ("📋", "Planilha", "planilha"),
+    ],
+}
 
 if st.session_state['ja_calculou']:
-    if 'secao_ativa' not in st.session_state:
-        st.session_state['secao_ativa'] = "dashboard"
+    modo_atual = st.session_state.get('modo_analise', 'posicoes')
+    SECOES_LISTA = SECOES_POR_MODO.get(modo_atual, SECOES_POR_MODO['posicoes'])
+
+    if 'secao_ativa' not in st.session_state or st.session_state['secao_ativa'] not in [c for _, _, c in SECOES_LISTA]:
+        st.session_state['secao_ativa'] = SECOES_LISTA[0][2]
 
     st.sidebar.markdown("**📂 Seção**")
     st.sidebar.markdown('<div class="nav-section">', unsafe_allow_html=True)
@@ -225,9 +273,26 @@ else:
 
 col_btn1, col_btn2 = st.sidebar.columns(2)
 
-if arquivo_upload is not None and not st.session_state['ja_calculou']:
-    if col_btn1.button("🚀 Calcular", use_container_width=True):
-        with st.spinner("Processando todas as posições..."):
+# Abas a processar de acordo com o modo escolhido
+_modo_atual_calc = st.session_state.get('modo_analise')
+_abas_do_modo = MODOS[_modo_atual_calc]['abas'] if _modo_atual_calc in MODOS else []
+
+# Tempo de aba de Time não precisa de cálculo AHP — só extração de estatísticas
+_abas_para_ahp = [a for a in _abas_do_modo if a != POSICAO_TIME]
+
+# Para modo Overall, exige que todas as abas AHP estejam configuradas antes de habilitar
+_overall_pendente = any(
+    pos in POSICOES_OVERALL and not st.session_state['configurado'].get(pos)
+    for pos in _abas_para_ahp
+)
+
+if (arquivo_upload is not None and not st.session_state['ja_calculou']
+        and st.session_state['modo_confirmado']):
+    if _overall_pendente:
+        col_btn1.button("🚀 Calcular", use_container_width=True, disabled=True,
+                        help="Confirme os critérios da aba Overall Análise primeiro.")
+    elif col_btn1.button("🚀 Calcular", use_container_width=True):
+        with st.spinner("Processando..."):
             try:
                 banco = st.session_state.get('banco_de_dados_completo') or                         pd.read_excel(arquivo_upload, sheet_name=None, engine='openpyxl')
                 st.session_state['banco_de_dados_completo'] = banco
@@ -237,11 +302,14 @@ if arquivo_upload is not None and not st.session_state['ja_calculou']:
 
             rankings = {}
             erros_calc = {}
-            for pos in POSICOES:
+            for pos in _abas_para_ahp:
                 if pos in banco:
                     try:
                         niveis = st.session_state['niveis_usuario'].get(pos)
-                        resultado = main.gerar_ranking(banco[pos], pos, niveis_usuario=niveis)
+                        if pos in POSICOES_OVERALL:
+                            resultado = main.gerar_rating_overall(banco[pos], pos, niveis_usuario=niveis)
+                        else:
+                            resultado = main.gerar_ranking(banco[pos], pos, niveis_usuario=niveis)
                         if isinstance(resultado, str):
                             erros_calc[pos] = resultado
                         else:
@@ -252,11 +320,14 @@ if arquivo_upload is not None and not st.session_state['ja_calculou']:
                     except Exception as e:
                         erros_calc[pos] = f"Erro inesperado: {e}"
 
+            # Aba de Time: não gera ranking, mas precisa estar presente no banco
+            time_disponivel = POSICAO_TIME in _abas_do_modo and POSICAO_TIME in banco
+
             if erros_calc:
                 st.session_state['erros_calculo'] = erros_calc
 
-            if not rankings:
-                st.error("Nenhuma posição pôde ser calculada. Verifique os critérios e a planilha.")
+            if not rankings and not time_disponivel:
+                st.error("Nada pôde ser calculado. Verifique os critérios e a planilha.")
                 if erros_calc:
                     for pos, msg in erros_calc.items():
                         st.warning(f"**{pos}:** {msg}")
@@ -272,13 +343,17 @@ if st.session_state['ja_calculou']:
 
 if st.session_state.get('reiniciando'):
     for key in ['ja_calculou', 'rankings', 'banco_de_dados_completo',
-                'secao_ativa', 'niveis_usuario', 'configurado', 'erros_calculo', 'reiniciando']:
+                'secao_ativa', 'niveis_usuario', 'configurado', 'erros_calculo', 'reiniciando',
+                'modo_analise', 'modo_confirmado']:
         if key in st.session_state:
             del st.session_state[key]
-    for pos in POSICOES:
+    for pos in POSICOES_TODAS:
         k = f'relatorio_ia_{pos}'
         if k in st.session_state:
             del st.session_state[k]
+    k_time = f'relatorio_ia_{POSICAO_TIME}'
+    if k_time in st.session_state:
+        del st.session_state[k_time]
     st.session_state['ja_calculou'] = False
     st.rerun()
 
@@ -302,6 +377,8 @@ if arquivo_upload is None and not st.session_state['ja_calculou']:
             del st.session_state['configurado']
         if 'niveis_usuario' in st.session_state:
             del st.session_state['niveis_usuario']
+        st.session_state['modo_analise'] = None
+        st.session_state['modo_confirmado'] = False
         st.rerun()
 
 if arquivo_upload is not None and 'banco_de_dados_completo' not in st.session_state:
@@ -418,7 +495,7 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
     st.markdown('<p class="hero-sub">Análise estatística de jogadores do Football Manager com método AHP</p>', unsafe_allow_html=True)
 
     if arquivo_upload is not None:
-        st.success("✅ Planilha carregada! Clique em **🚀 Calcular** na barra lateral para processar todas as posições.")
+        st.success("✅ Planilha carregada! Escolha o modo de análise para continuar.")
 
     st.markdown("---")
 
@@ -437,23 +514,23 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
           </div>
           <div class="step-card">
             <div class="step-n">2</div>
-            <div class="step-t">Filtros</div>
-            <div class="step-d">Oculte jogadores não à venda ou com valor desconhecido</div>
+            <div class="step-t">Modo</div>
+            <div class="step-d">Escolha entre Posições, Time ou Overall</div>
           </div>
           <div class="step-card">
             <div class="step-n">3</div>
-            <div class="step-t">Calcular</div>
-            <div class="step-d">Clique em 🚀 Calcular — todas as posições são processadas de uma vez</div>
+            <div class="step-t">Critérios</div>
+            <div class="step-d">Ajuste os pesos AHP (opcional em Posições, obrigatório em Overall)</div>
           </div>
           <div class="step-card">
             <div class="step-n">4</div>
-            <div class="step-t">Posições</div>
-            <div class="step-d">Navegue pelas abas no topo: Goleiros, Zagueiros, Laterais…</div>
+            <div class="step-t">Calcular</div>
+            <div class="step-d">Clique em 🚀 Calcular para processar as abas do modo escolhido</div>
           </div>
           <div class="step-card">
             <div class="step-n">5</div>
             <div class="step-t">Seções</div>
-            <div class="step-d">Use o menu lateral para Dashboard, Comparativo, IA e Ficha</div>
+            <div class="step-d">Use o menu lateral para navegar pelas seções do modo</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -464,19 +541,31 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
         st.markdown("### 🔄 Última atualização")
         st.space("small")
 
-        st.markdown('<span class="update-tag">v2.2 · Jun 2025</span>', unsafe_allow_html=True)
-        v22 = [
-            "Configuração de critérios AHP por posição com interface estilo menu de jogo",
-            "Opção de Ignorar critérios — excluídos do cálculo AHP",
-            "Cálculo automático com pesos padrão para posições não configuradas",
-            "Tratamento completo de erros e exceções em todo o sistema",
-            "Tela de loading ao fazer upload e ao reiniciar",
-            "Ficha do jogador reformulada com design de cartão e gráfico de nota circular",
-            "Planilha completa com todos os dados originais do upload",
-            "Ranking visual no comparativo substituindo gráfico de barras",
+        st.markdown('<span class="update-tag">v2.3 · Jun 2025</span>', unsafe_allow_html=True)
+        v23 = [
+            "Seleção de modo de análise: Posições, Time ou Overall",
+            "Modo Time: dashboard agregado da equipe (por 90 min) + Olheiro do Time",
+            "Modo Overall: Rating Overall via AHP com configuração de critérios obrigatória",
+            "Sidebar dinâmica — seções mudam conforme o modo escolhido",
+            "Critérios das abas Overall filtrados para métricas por 90 minutos e percentuais",
         ]
-        for n in v22:
+        for n in v23:
             st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
+
+        st.space("small")
+        with st.expander("📋 v2.2 · Jun 2025 — notas anteriores"):
+            v22 = [
+                "Configuração de critérios AHP por posição com interface estilo menu de jogo",
+                "Opção de Ignorar critérios — excluídos do cálculo AHP",
+                "Cálculo automático com pesos padrão para posições não configuradas",
+                "Tratamento completo de erros e exceções em todo o sistema",
+                "Tela de loading ao fazer upload e ao reiniciar",
+                "Ficha do jogador reformulada com design de cartão e gráfico de nota circular",
+                "Planilha completa com todos os dados originais do upload",
+                "Ranking visual no comparativo substituindo gráfico de barras",
+            ]
+            for n in v22:
+                st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
 
         st.space("small")
         with st.expander("📋 v2.1 · Jun 2025 — notas anteriores"):
@@ -576,6 +665,62 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
     st.stop()
 
 
+# ==========================================
+# SELEÇÃO DE MODO DE ANÁLISE
+# (aparece após o upload, antes do cálculo)
+# ==========================================
+if not st.session_state['ja_calculou'] and not st.session_state['modo_confirmado']:
+
+    banco_pre = st.session_state.get('banco_de_dados_completo', {})
+
+    st.markdown("""
+    <style>
+    .mode-title { font-size:1.8rem; font-weight:800; margin-bottom:4px; }
+    .mode-sub   { font-size:0.92rem; color:#6B7280; margin-bottom:24px; }
+    .mode-card {
+        background:#080E0A; border:1px solid #1E3A24; border-radius:14px;
+        padding:24px 20px; text-align:center; height:100%;
+        transition: border-color .2s, transform .2s, box-shadow .2s;
+    }
+    .mode-card:hover {
+        border-color:#22C55E; transform:translateY(-4px);
+        box-shadow:0 10px 28px rgba(34,197,94,0.12);
+    }
+    .mode-icon { font-size:2.4rem; margin-bottom:8px; }
+    .mode-name { font-size:1.1rem; font-weight:800; color:#E8F5E9; margin-bottom:6px; }
+    .mode-desc { font-size:0.8rem; color:#9CA3AF; line-height:1.4; min-height:3.4em; }
+    .mode-unavailable { opacity:0.4; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<p class="mode-title">🎯 O que você quer analisar?</p>', unsafe_allow_html=True)
+    st.markdown('<p class="mode-sub">Escolha um modo para continuar. Para trocar depois, use 🔄 Recomeçar.</p>', unsafe_allow_html=True)
+
+    cols_modo = st.columns(3)
+    for col, (chave_modo, info) in zip(cols_modo, MODOS.items()):
+        abas_presentes = [a for a in info['abas'] if a in banco_pre]
+        disponivel = len(abas_presentes) > 0
+
+        with col:
+            card_class = "mode-card" if disponivel else "mode-card mode-unavailable"
+            st.markdown(f"""
+            <div class="{card_class}">
+                <div class="mode-icon">{info['icone']}</div>
+                <div class="mode-name">{info['label']}</div>
+                <div class="mode-desc">{info['descricao']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if disponivel:
+                if st.button(f"Selecionar {info['label']}", key=f"modo_{chave_modo}", use_container_width=True):
+                    st.session_state['modo_analise'] = chave_modo
+                    st.session_state['modo_confirmado'] = True
+                    st.rerun()
+            else:
+                st.caption("⚠️ Aba não encontrada na planilha")
+
+    st.stop()
+
 
 # ==========================================
 # DADOS CARREGADOS
@@ -592,6 +737,11 @@ erros_calculo = st.session_state.get('erros_calculo', {})
 def montar_df(posicao):
     if posicao not in rankings or posicao not in banco_completo:
         return None, None
+
+    # Abas Overall têm sua própria lógica de montagem (sem Moneyball)
+    if posicao in POSICOES_OVERALL:
+        return montar_df_overall(posicao)
+
     try:
         df_resultado = rankings[posicao].copy()
         df_da_posicao = banco_completo[posicao].copy()
@@ -632,6 +782,40 @@ def montar_df(posicao):
     except Exception:
         return None, banco_completo.get(posicao)
 
+
+def montar_df_overall(posicao):
+    """
+    Monta df_filtrado para abas de Rating Overall (Time Estatísticas, Overall Análise).
+    Não aplica filtros de valor/venda (essas abas não têm essas colunas).
+    """
+    try:
+        df_resultado = rankings[posicao].copy()  # [Jogador, Equipe, Rating_Overall]
+        df_da_posicao = banco_completo[posicao].copy()
+
+        # Remove linhas auxiliares (ex: "Análise da Equipe") usando a mesma regra do main.py
+        if 'Posição' in df_da_posicao.columns:
+            df_da_posicao_jog = df_da_posicao[df_da_posicao['Posição'].apply(lambda x: isinstance(x, str))].copy()
+        else:
+            df_da_posicao_jog = df_da_posicao.dropna(subset=['Jogador']).copy()
+
+        # Todas as colunas numéricas relevantes (exclui colunas de identificação)
+        colunas_id = set(COLUNAS_IDENTIFICACAO_OVERALL.get(posicao, ['Jogador']))
+        idx_nota = df_da_posicao_jog.columns.get_loc('Nota média') if 'Nota média' in df_da_posicao_jog.columns else len(df_da_posicao_jog.columns) - 1
+        colunas_metricas = [c for c in df_da_posicao_jog.columns[:idx_nota+1] if c not in colunas_id]
+
+        colunas_existentes = ['Jogador'] + [c for c in colunas_metricas if c in df_da_posicao_jog.columns]
+        if 'Equipe' in df_da_posicao_jog.columns and 'Equipe' not in colunas_existentes:
+            colunas_existentes.insert(1, 'Equipe')
+
+        df_res = df_da_posicao_jog[colunas_existentes].copy().reset_index(drop=True)
+        df_rating = df_resultado[["Jogador", "Rating_Overall"]].reset_index(drop=True)
+        df_res = df_res.merge(df_rating, on="Jogador", how="inner")
+        df_res = df_res.sort_values(by="Rating_Overall", ascending=False).reset_index(drop=True)
+
+        return df_res, df_da_posicao
+    except Exception:
+        return None, banco_completo.get(posicao)
+
 # ==========================================
 # HELPER: renderiza seção de uma posição
 # ==========================================
@@ -649,6 +833,11 @@ def render_secao(posicao, df_filtrado, df_da_posicao, secao):
 
     if 'Jogador' not in df_filtrado.columns:
         st.error(f"Estrutura de dados inválida para {posicao}.")
+        return
+
+    # Abas de Rating Overall têm renderização própria
+    if posicao in POSICOES_OVERALL:
+        render_secao_overall(posicao, df_filtrado, df_da_posicao, secao)
         return
 
     alvo = df_filtrado.iloc[0]
@@ -1105,6 +1294,511 @@ def render_secao(posicao, df_filtrado, df_da_posicao, secao):
         st.markdown(f'<div class="ficha-metric-grid">{items_html}</div>', unsafe_allow_html=True)
 
 # ==========================================
+# HELPER: renderiza seção para abas de Rating Overall
+# (Time Estatísticas, Overall Análise — sem lógica Moneyball)
+# ==========================================
+def render_secao_overall(posicao, df_filtrado, df_da_posicao, secao):
+    alvo = df_filtrado.iloc[0]
+    colunas_numericas = df_filtrado.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    if not colunas_numericas:
+        st.warning(f"Nenhuma coluna numérica encontrada para {posicao}.")
+        return
+
+    COLUNAS_INFO_OVERALL = {'Jogador', 'Equipe'}
+    cols_metricas = [c for c in colunas_numericas if c not in COLUNAS_INFO_OVERALL]
+
+    # ------------------------------------------
+    if secao == "dashboard":
+        st.subheader("🥇 Melhor Rating Overall")
+        with st.container(horizontal=True):
+            st.metric("Jogador", alvo['Jogador'],
+                      delta=f"Rating: {alvo['Rating_Overall']:.1f}/100", border=True)
+            if 'Equipe' in alvo.index:
+                st.metric("Equipe", str(alvo['Equipe']), border=True)
+            st.metric("Jogadores avaliados", len(df_filtrado), border=True)
+
+        st.space("medium")
+        st.subheader("🏆 Top 10 — Rating Overall")
+        col_lista, col_dist = st.columns([1, 2], gap="medium")
+
+        with col_lista:
+            with st.container(border=True, height=400):
+                for i, row in enumerate(df_filtrado.head(10).itertuples(), 1):
+                    medalha = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}º")
+                    cols_row = st.columns([1, 3, 2])
+                    cols_row[0].markdown(medalha)
+                    cols_row[1].markdown(f"**{row.Jogador}**")
+                    cols_row[2].caption(f"{row.Rating_Overall:.1f} pts")
+
+        with col_dist:
+            with st.container(border=True, height=400):
+                atrib_grafico = st.selectbox(
+                    "Dado a exibir:",
+                    colunas_numericas,
+                    index=colunas_numericas.index("Rating_Overall") if "Rating_Overall" in colunas_numericas else 0,
+                    key=f"dash_atrib_{posicao}"
+                )
+                tooltip_cols = ['Jogador']
+                if 'Equipe' in df_filtrado.columns:
+                    tooltip_cols.append('Equipe')
+                tooltip_cols.append(alt.Tooltip(f'{atrib_grafico}:Q', title=atrib_grafico, format='.2f'))
+                chart_dist = alt.Chart(df_filtrado.head(10)).mark_bar(
+                    color='#22C55E', cornerRadiusEnd=3
+                ).encode(
+                    x=alt.X(f'{atrib_grafico}:Q', title=atrib_grafico),
+                    y=alt.Y('Jogador:N', sort='-x', title=''),
+                    tooltip=tooltip_cols
+                ).properties(height=310)
+                st.altair_chart(chart_dist)
+
+        st.space("medium")
+        st.subheader("📊 Rating Overall vs Nota média FM")
+        with st.container(border=True):
+            if 'Nota média' in df_filtrado.columns:
+                tooltip_cols = ['Jogador']
+                if 'Equipe' in df_filtrado.columns:
+                    tooltip_cols.append('Equipe')
+                tooltip_cols += [
+                    alt.Tooltip('Rating_Overall:Q', title='Rating Overall', format='.1f'),
+                    alt.Tooltip('Nota média:Q', title='Nota média FM', format='.1f')
+                ]
+                scatter = alt.Chart(df_filtrado.head(10)).mark_circle(size=90, opacity=0.8).encode(
+                    x=alt.X('Rating_Overall:Q', title='Rating Overall', scale=alt.Scale(zero=False)),
+                    y=alt.Y('Nota média:Q', title='Nota média FM', scale=alt.Scale(zero=False)),
+                    color=alt.Color('Rating_Overall:Q', scale=alt.Scale(scheme='greens'), legend=None),
+                    tooltip=tooltip_cols
+                ).properties(height=340)
+                labels = scatter.mark_text(dy=-10, fontSize=11).encode(text='Jogador:N')
+                st.altair_chart(scatter + labels)
+            else:
+                st.caption("Coluna 'Nota média' não encontrada para esta aba.")
+
+    # ------------------------------------------
+    elif secao == "comparativo":
+        jogadores_disponiveis = df_filtrado['Jogador'].tolist()
+        col_ctrl, col_charts = st.columns([1, 2], gap="medium")
+
+        with col_ctrl:
+            with st.container(border=True):
+                st.markdown("**Selecione jogadores**")
+                selecionados = st.multiselect(
+                    "Até 5 jogadores:",
+                    options=jogadores_disponiveis,
+                    default=jogadores_disponiveis[:3],
+                    max_selections=5,
+                    placeholder="Digite o nome do jogador...",
+                    key=f"comp_sel_{posicao}"
+                )
+                atributo_barra = st.selectbox(
+                    "Atributo para comparar:",
+                    colunas_numericas,
+                    index=colunas_numericas.index('Rating_Overall') if 'Rating_Overall' in colunas_numericas else 0,
+                    key=f"atrib_barra_{posicao}"
+                )
+                atributo_x = st.selectbox(
+                    "Scatter — Eixo X:",
+                    colunas_numericas,
+                    index=colunas_numericas.index('Rating_Overall') if 'Rating_Overall' in colunas_numericas else 0,
+                    key=f"eixo_x_{posicao}"
+                )
+                atributo_y = st.selectbox(
+                    "Scatter — Eixo Y:",
+                    colunas_numericas,
+                    index=min(1, len(colunas_numericas) - 1),
+                    key=f"eixo_y_{posicao}"
+                )
+
+        with col_charts:
+            if selecionados:
+                df_comp = df_filtrado[df_filtrado['Jogador'].isin(selecionados)].copy()
+                df_comp_sorted = df_comp.sort_values(by=atributo_barra, ascending=False).reset_index(drop=True)
+                val_max = df_comp_sorted[atributo_barra].max()
+                val_min = df_comp_sorted[atributo_barra].min()
+                with st.container(border=True):
+                    st.markdown(f"**🏆 Ranking: {atributo_barra}**")
+                    for i, row in df_comp_sorted.iterrows():
+                        pos = i + 1
+                        medalha = {1: "🥇", 2: "🥈", 3: "🥉"}.get(pos, f"{pos}º")
+                        val = row[atributo_barra]
+                        pct = ((val - val_min) / (val_max - val_min) * 100) if val_max != val_min else 100
+                        val_fmt = f"{val:.2f}" if isinstance(val, float) else str(int(val))
+                        r_cols = st.columns([1, 4, 2, 3])
+                        r_cols[0].markdown(medalha)
+                        r_cols[1].markdown(f"**{row['Jogador']}**")
+                        r_cols[2].caption(val_fmt)
+                        r_cols[3].progress(int(pct))
+
+                st.space("small")
+                with st.container(border=True):
+                    st.markdown(f"**{atributo_x} vs {atributo_y}**")
+                    tooltip_cols = ['Jogador']
+                    if 'Equipe' in df_comp.columns:
+                        tooltip_cols.append('Equipe')
+                    tooltip_cols += [
+                        alt.Tooltip(f'{atributo_x}:Q', format='.2f'),
+                        alt.Tooltip(f'{atributo_y}:Q', format='.2f')
+                    ]
+                    scatter_comp = alt.Chart(df_comp).mark_circle(size=150).encode(
+                        x=alt.X(f'{atributo_x}:Q', scale=alt.Scale(zero=False)),
+                        y=alt.Y(f'{atributo_y}:Q', scale=alt.Scale(zero=False)),
+                        color=alt.Color('Jogador:N', legend=alt.Legend(title='Jogador')),
+                        tooltip=tooltip_cols
+                    ).properties(height=220)
+                    labels = scatter_comp.mark_text(dy=-12, fontSize=11).encode(text='Jogador:N')
+                    st.altair_chart(scatter_comp + labels)
+
+        if selecionados:
+            st.space("medium")
+            st.subheader("📋 Tabela comparativa")
+            df_tabela = df_filtrado[df_filtrado['Jogador'].isin(selecionados)].copy()
+            col_config_comp = {
+                'Rating_Overall': st.column_config.ProgressColumn(
+                    'Rating Overall', min_value=0, max_value=100, format='%.1f'),
+            }
+            if 'Nota média' in df_tabela.columns:
+                col_config_comp['Nota média'] = st.column_config.ProgressColumn(
+                    'Nota média FM', min_value=0, max_value=20, format='%.1f')
+            st.dataframe(df_tabela, column_config=col_config_comp, hide_index=True)
+
+    # ------------------------------------------
+    elif secao == "scout":
+        st.subheader("🤖 Opinião do Olheiro Chefe")
+        st.caption("Análise gerada por inteligência artificial com base no Rating Overall.")
+
+        chave_ia = f'relatorio_ia_{posicao}'
+        CHAVE_API = st.secrets["CHAVE_API_GEMINI"]
+        genai.configure(api_key=CHAVE_API)
+        modelo_ia = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+
+        if chave_ia not in st.session_state:
+            if st.button(":material/play_arrow: Gerar relatório do olheiro", type="primary",
+                         key=f"btn_ia_{posicao}"):
+                with st.spinner("O Olheiro IA está analisando e redigindo o relatório..."):
+                    dados_top = df_filtrado.head(10).to_dict('records')
+                    prompt = f"""
+                    Você é um analista de desempenho de futebol.
+                    Aqui está o Rating Overall (0-100) calculado via AHP com base em estatísticas
+                    de desempenho dos jogadores da aba "{posicao}":
+                    {dados_top}
+
+                    Escreva uma análise direta e profissional destacando os 3 jogadores com melhor
+                    Rating Overall, explicando quais estatísticas mais contribuíram para o desempenho
+                    de cada um. Não fale sobre valor de mercado, salário ou contrato — foque apenas
+                    em desempenho em campo.
+
+                    Assine o final como Olheiro IA.
+                    """
+                    try:
+                        resposta = modelo_ia.generate_content(prompt)
+                        st.session_state[chave_ia] = resposta.text
+                        st.rerun()
+                    except Exception:
+                        st.session_state[chave_ia] = "⚠️ Limite de velocidade do Google atingido. Aguarde 1 minuto e tente novamente."
+                        st.rerun()
+        else:
+            with st.container(border=True):
+                st.write(st.session_state[chave_ia])
+            if st.button(":material/refresh: Gerar novo relatório", key=f"btn_ia_refresh_{posicao}"):
+                del st.session_state[chave_ia]
+                st.rerun()
+
+    # ------------------------------------------
+    elif secao == "ficha":
+        todos_jogadores = df_filtrado['Jogador'].tolist()
+        lider = df_filtrado.iloc[0]
+
+        jogador_sel = st.selectbox(
+            "Busque o jogador pelo nome:",
+            options=todos_jogadores,
+            key=f"ficha_sel_{posicao}",
+            placeholder="Digite o nome do jogador..."
+        )
+
+        jogador = df_filtrado[df_filtrado['Jogador'] == jogador_sel].iloc[0]
+        eh_lider = (jogador_sel == lider['Jogador'])
+        rank_pos = todos_jogadores.index(jogador_sel) + 1
+
+        rating_jog = jogador['Rating_Overall']
+        rating_lider = lider['Rating_Overall']
+        delta_rating = rating_jog - rating_lider if not eh_lider else None
+        rating_pct = int(max(0, min(100, rating_jog)))
+
+        rank_badge = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank_pos, f"#{rank_pos}")
+        delta_color_css = "#22C55E" if (delta_rating is None or delta_rating >= 0) else "#EF4444"
+        delta_txt = "Melhor do ranking" if eh_lider else f"{delta_rating:+.1f} vs 1º"
+
+        st.markdown(f"""
+        <style>
+        .ov-card {{
+            background: #080E0A;
+            border: 1px solid #1E3A24;
+            border-radius: 16px;
+            padding: 24px 28px;
+            margin-bottom: 16px;
+        }}
+        .ov-header {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 20px;
+        }}
+        .ov-nome {{
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #E8F5E9;
+            line-height: 1.1;
+            margin-bottom: 4px;
+        }}
+        .ov-equipe {{
+            font-size: 0.85rem;
+            color: #6B7280;
+        }}
+        .ov-rating-circle {{
+            min-width: 96px;
+            height: 88px;
+            border-radius: 50%;
+            background: conic-gradient(#22C55E {rating_pct}%, #1E3A24 0%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .ov-rating-inner {{
+            width: 68px;
+            height: 68px;
+            border-radius: 50%;
+            background: #080E0A;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }}
+        .ov-rating-num {{
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #22C55E;
+            line-height: 1;
+        }}
+        .ov-rating-label {{
+            font-size: 0.55rem;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        .ov-section-title {{
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #22C55E;
+            margin: 18px 0 10px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #1E3A24;
+        }}
+        .ov-metric-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 8px;
+        }}
+        .ov-metric-item {{
+            background: #111A14;
+            border: 1px solid #1E3A24;
+            border-radius: 10px;
+            padding: 10px 12px;
+        }}
+        .ov-metric-name {{
+            font-size: 0.68rem;
+            color: #6B7280;
+            margin-bottom: 4px;
+            line-height: 1.3;
+        }}
+        .ov-metric-val {{
+            font-size: 1rem;
+            font-weight: 700;
+            color: #E8F5E9;
+        }}
+        .ov-metric-ref {{
+            font-size: 0.65rem;
+            margin-top: 2px;
+        }}
+        </style>
+
+        <div class="ov-card">
+          <div class="ov-header">
+            <div>
+              <div class="ov-nome">{jogador['Jogador']}</div>
+              <div class="ov-equipe">{jogador.get('Equipe','—')} · {rank_badge} {rank_pos}º de {len(todos_jogadores)}</div>
+            </div>
+            <div class="ov-rating-circle">
+              <div class="ov-rating-inner">
+                <span class="ov-rating-num">{rating_jog:.0f}</span>
+                <span class="ov-rating-label">/ 100</span>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:0.75rem; color:{delta_color_css}; margin-top:10px;">{delta_txt}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="ov-section-title">Métricas vs melhor do ranking</div>', unsafe_allow_html=True)
+
+        items_html = ""
+        for metrica in cols_metricas:
+            try:
+                val_jog_m = jogador[metrica]
+                val_ref_m = lider[metrica]
+                if pd.isna(val_jog_m) or pd.isna(val_ref_m):
+                    val_display = "—"
+                    ref_html = ""
+                else:
+                    val_display = f"{val_jog_m:.2f}" if isinstance(val_jog_m, float) else str(int(val_jog_m))
+                    if not eh_lider:
+                        diff = val_jog_m - val_ref_m
+                        # Todas as métricas overall são de benefício: maior é melhor
+                        is_better = diff > 0
+                        diff_color = "#22C55E" if is_better else ("#EF4444" if diff != 0 else "#6B7280")
+                        ref_html = f'<div class="ov-metric-ref" style="color:{diff_color}">{"+" if diff>0 else ""}{diff:.2f} vs {lider["Jogador"][:10]}</div>'
+                    else:
+                        ref_html = '<div class="ov-metric-ref" style="color:#22C55E">🥇 Referência</div>'
+            except Exception:
+                val_display = "—"
+                ref_html = ""
+
+            items_html += f"""
+            <div class="ov-metric-item">
+              <div class="ov-metric-name">{metrica}</div>
+              <div class="ov-metric-val">{val_display}</div>
+              {ref_html}
+            </div>"""
+
+        st.markdown(f'<div class="ov-metric-grid">{items_html}</div>', unsafe_allow_html=True)
+
+
+# ==========================================
+# HELPER: renderiza seção para a aba de Time
+# (Dashboard agregado + Olheiro do Time — sem ranking individual)
+# ==========================================
+def render_secao_time(posicao, secao):
+    df_bruto = banco_completo.get(posicao)
+    if df_bruto is None or df_bruto.empty:
+        st.warning(f"Aba '{posicao}' não encontrada ou vazia na planilha.")
+        return
+
+    # Extrai estatísticas agregadas da equipe (seção "Análise da Equipe")
+    stats_time = extrair_estatisticas_time(df_bruto)
+
+    # Extrai os 11 titulares (linhas com Posição válida)
+    if 'Posição' in df_bruto.columns:
+        df_titulares = df_bruto[df_bruto['Posição'].apply(lambda x: isinstance(x, str))].copy()
+    else:
+        df_titulares = df_bruto.dropna(subset=['Jogador']).copy()
+
+    cols_titulares = [c for c in ['Jogador', 'Posição', 'Nota média', 'Gols', 'Assistências'] if c in df_titulares.columns]
+
+    if not stats_time and df_titulares.empty:
+        st.warning(f"Não foi possível extrair dados da aba '{posicao}'.")
+        return
+
+    # ------------------------------------------
+    if secao == "dashboard_time":
+        st.subheader("📊 Dashboard do Time")
+        st.caption("Estatísticas agregadas da equipe (médias por 90 minutos e totais).")
+
+        if not stats_time:
+            st.info("Seção 'Análise da Equipe' não encontrada nesta planilha.")
+        else:
+            # Separa métricas /90 (rate) das demais (totais/médias gerais)
+            metricas_90 = {k: v for k, v in stats_time.items() if '/90' in k or '/ 90' in k or '90 min' in k.lower()}
+            metricas_outras = {k: v for k, v in stats_time.items() if k not in metricas_90}
+
+            st.markdown("**Por 90 minutos**")
+            cols_90 = st.columns(4)
+            for i, (k, v) in enumerate(metricas_90.items()):
+                val_fmt = f"{v:.2f}" if isinstance(v, float) else str(v)
+                cols_90[i % 4].metric(k, val_fmt, border=True)
+
+            st.space("small")
+            st.markdown("**Outras estatísticas**")
+            cols_outras = st.columns(4)
+            for i, (k, v) in enumerate(metricas_outras.items()):
+                if isinstance(v, float):
+                    val_fmt = f"{v*100:.1f}%" if 0 <= v <= 1 and ('%' in k) else f"{v:.2f}"
+                else:
+                    val_fmt = str(v)
+                cols_outras[i % 4].metric(k, val_fmt, border=True)
+
+        st.space("medium")
+        st.subheader("🧑‍🤝‍🧑 Escalação titular analisada")
+        if not df_titulares.empty and cols_titulares:
+            col_config = {}
+            if 'Nota média' in cols_titulares:
+                col_config['Nota média'] = st.column_config.ProgressColumn(
+                    'Nota média', min_value=0, max_value=10, format='%.2f')
+            st.dataframe(df_titulares[cols_titulares], column_config=col_config, hide_index=True)
+        else:
+            st.caption("Nenhum titular encontrado.")
+
+    # ------------------------------------------
+    elif secao == "scout_time":
+        st.subheader("🤖 Olheiro do Time")
+        st.caption("Escolha a perspectiva da análise: como o próprio time ou como um olheiro adversário.")
+
+        PERSPECTIVAS = {
+            "proprio":    ("🛡️ Meu Time", "Análise interna — pontos de melhoria e sugestões de reforço"),
+            "adversario": ("🎯 Time Adversário", "Visão de scout rival — fraquezas a explorar taticamente"),
+        }
+
+        chave_persp = f'perspectiva_time_{posicao}'
+        if chave_persp not in st.session_state:
+            st.session_state[chave_persp] = "proprio"
+
+        col_a, col_b = st.columns(2)
+        for col, (chave_persp_opt, (label, desc)) in zip([col_a, col_b], PERSPECTIVAS.items()):
+            ativo = st.session_state[chave_persp] == chave_persp_opt
+            with col:
+                if st.button(label, key=f"persp_{posicao}_{chave_persp_opt}",
+                              use_container_width=True,
+                              type="primary" if ativo else "secondary"):
+                    if st.session_state[chave_persp] != chave_persp_opt:
+                        st.session_state[chave_persp] = chave_persp_opt
+                        # Limpa relatório anterior ao trocar de perspectiva
+                        chave_ia_old = f'relatorio_ia_{posicao}_{chave_persp_opt}'
+                        st.rerun()
+                st.caption(desc)
+
+        perspectiva_ativa = st.session_state[chave_persp]
+        chave_ia = f'relatorio_ia_{posicao}_{perspectiva_ativa}'
+
+        CHAVE_API = st.secrets["CHAVE_API_GEMINI"]
+        genai.configure(api_key=CHAVE_API)
+        modelo_ia = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+
+        st.space("small")
+
+        if chave_ia not in st.session_state:
+            label_btn = "Gerar análise do time" if perspectiva_ativa == "proprio" else "Gerar análise do adversário"
+            if st.button(f":material/play_arrow: {label_btn}", type="primary", key=f"btn_ia_{posicao}_{perspectiva_ativa}"):
+                with st.spinner("O Olheiro IA está analisando o desempenho da equipe..."):
+                    titulares_dict = df_titulares[cols_titulares].to_dict('records') if cols_titulares else []
+                    prompt = gerar_olheiro_time_prompt(stats_time, titulares_dict, perspectiva=perspectiva_ativa)
+                    try:
+                        resposta = modelo_ia.generate_content(prompt)
+                        st.session_state[chave_ia] = resposta.text
+                        st.rerun()
+                    except Exception:
+                        st.session_state[chave_ia] = "⚠️ Limite de velocidade do Google atingido. Aguarde 1 minuto e tente novamente."
+                        st.rerun()
+        else:
+            with st.container(border=True):
+                st.write(st.session_state[chave_ia])
+            if st.button(":material/refresh: Gerar nova análise", key=f"btn_ia_refresh_{posicao}_{perspectiva_ativa}"):
+                del st.session_state[chave_ia]
+                st.rerun()
+
+    else:
+        st.warning(f"Seção '{secao}' não disponível para a aba de Time.")
+
+
+# ==========================================
 # ÁREA PRINCIPAL — abas por posição
 # ==========================================
 
@@ -1155,16 +1849,22 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Antes do cálculo: usa as abas do arquivo carregado
-# Após o cálculo: usa as posições que foram processadas com sucesso
+# Abas disponíveis de acordo com o modo de análise escolhido
+modo_atual = st.session_state.get('modo_analise', 'posicoes')
+abas_do_modo = MODOS.get(modo_atual, MODOS['posicoes'])['abas']
+
 if st.session_state['ja_calculou']:
-    posicoes_disponiveis = [p for p in POSICOES if p in rankings]
+    # Time não entra em "rankings" (não usa AHP) — sempre disponível se estiver no banco
+    posicoes_disponiveis = [
+        p for p in abas_do_modo
+        if p in rankings or (p == POSICAO_TIME and p in banco_completo)
+    ]
     if not posicoes_disponiveis:
-        st.warning("Nenhuma posição processada com sucesso.")
+        st.warning("Nenhuma aba processada com sucesso.")
         st.stop()
 else:
     banco_pre = st.session_state.get('banco_de_dados_completo', {})
-    posicoes_disponiveis = [p for p in POSICOES if p in banco_pre]
+    posicoes_disponiveis = [p for p in abas_do_modo if p in banco_pre]
     if not posicoes_disponiveis:
         st.info("Faça o upload da planilha e clique em **🚀 Calcular** para começar.")
         st.stop()
@@ -1186,6 +1886,11 @@ NIVEL_LABELS = {
 
 for aba, posicao in zip(abas, posicoes_disponiveis):
     with aba:
+
+        # ---- Aba de Time: não precisa de configuração de critérios AHP ----
+        if posicao == POSICAO_TIME:
+            render_secao_time(posicao, secao_ativa)
+            continue
 
         # ---- Configuração de critérios — estilo menu de jogo ----
         if not st.session_state['ja_calculou'] or not st.session_state['configurado'].get(posicao):
@@ -1463,9 +2168,11 @@ for aba, posicao in zip(abas, posicoes_disponiveis):
                         st.session_state['configurado'][posicao] = True
                         st.rerun()
 
-            # Opção de pular — só aparece antes do cálculo
-            if not st.session_state['ja_calculou']:
+            # Opção de pular — só aparece antes do cálculo, e não para Overall (configuração obrigatória)
+            if not st.session_state['ja_calculou'] and posicao not in POSICOES_OVERALL:
                 st.caption("💡 Você também pode clicar em **🚀 Calcular** direto na barra lateral — as posições não configuradas usarão os pesos padrão.")
+            elif not st.session_state['ja_calculou'] and posicao in POSICOES_OVERALL:
+                st.caption("⚠️ É necessário confirmar os critérios desta aba antes de calcular.")
 
             continue
 

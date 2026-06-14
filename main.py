@@ -136,6 +136,48 @@ CRITERIOS_PADRAO = {
             'Eficácia ofensiva', 'Participação do jogador a cada 90 minutos'
         ],
     },
+    '📊Time Estatísticas': {
+        'colunas': [
+            'Passes Tentados /90', 'Pass Certos / 90', 'Passes errados /90', '% Passes certos /90',
+            'Falhas/90', '% passes errados', 'Ações com Bola/90', 'Perda de posse /90 minutos',
+            'Ações que geraram finalizações ao gol /90', 'Cruzamentos %', 'xA /90',
+            'xG sem pênaltis/90', 'xA + xG sem pen /90', 'Fin/90', 'Finalizações Certas /90',
+            '% Finalizações certas', 'Gols/90', 'Ast/90', 'Gols + Ast/90',
+            'Cabeceios Disputados/90', 'Cabs Ganhos / 90', '% Cabs', 'Des T /90', 'Desarmes G/90',
+            '% Desarmes', 'Faltas/90', '% Aproveitamento das Tentativas de Criar chance em  BP',
+            'Pass D / 90', 'Dist / 90', 'Fintas/90', 'Nota média',
+        ],
+        'nivel_1': [],
+        'nivel_2': [],
+    },
+    '🔍Overall Análise': {
+        'colunas': [
+            '% de vezes que foi eleito o Homem do Jogo', 'Gols/90', 'Assistência /90',
+            'Gols + A/90', 'non Pen xG/90', 'xA /90', 'xG + xA /90', 'Finalizações /90',
+            'Fin pra fora /90', 'Finalizações no gol /90', 'Finalizações Def /90',
+            '% Finalizações em direção ao gol', '% Finalizações que converteram em gol',
+            'Tentativas/90', 'Chances C /90',
+            '% Aproveitamento das Tentativas de Criar chance em  BP', '% Conversão de pênalti',
+            'Fora de jogo/90', 'Cabeceios Ganhos/90', '% Cabs', 'Des Ganhos/90',
+            'Dribles Sofridos/90', '%Des Ganhos', 'Faltas/90', 'Cartão Amarelo/90',
+            'Cartão Vermelho/90', '% Cartões por falta cometida',
+            '% Pressão pra roubar a bola com sucesso', 'Lances disputados/90', 'Lances ganhos/90',
+            '% Lances disputados e ganhos de forma limpa', 'Bolas Int / 90', 'Bolas roubadas / 90',
+            'Lances ofensivos tentados/90', 'Lances OF conseguidos/90',
+            '% Lances ofensivos conseguidos', 'Lances defensivos tentados/90',
+            'Lances DEF conseguidos/90', '% Lances defensivos conseguidos', '% Acertos Global',
+            'Fintas/90', 'Criação/90', 'Tentativas de marcar um gol/90',
+            'Tentativas de Remates de fora da área /90', 'Participações do jogador /90',
+            'Ações que geraram finalizações ao gol /90', 'Cruzamentos T/90', 'Cruzamentos C/90',
+            'Pass D /90', 'Passes Tentados /90', 'Passes Completados /90', '% Passes Certos',
+            'Passes Errados /90', 'Passes em Prog /90', '% de Passes que são em progressão',
+            'Ações com Bola/90', 'Ações com Bola/90.1', '% Ações com sucesso',
+            'Distância percorrida/90', 'Sprints/90', 'Posse Desperdiçada /90', 'Posse Perdida/90',
+            'Nota média',
+        ],
+        'nivel_1': [],
+        'nivel_2': [],
+    },
 }
 
 CRITERIOS_DE_CUSTO = [
@@ -163,6 +205,18 @@ COLUNA_CONTRATO_POR_POSICAO = {
 }
 
 MIN_CRITERIOS_ATIVOS = 2  # mínimo de critérios para o AHP fazer sentido
+
+# Abas que usam Rating Overall (sem custo/benefício, sem valor/salário/idade)
+POSICOES_OVERALL = ['📊Time Estatísticas', '🔍Overall Análise']
+
+# Colunas de identificação a excluir do cálculo nas abas Overall
+COLUNAS_IDENTIFICACAO_OVERALL = {
+    '📊Time Estatísticas': ['Jogador', 'Posição'],
+    '🔍Overall Análise': [
+        'Unnamed: 0', 'Jogador', 'NAC', 'Equipe', 'Posição', 'Idade',
+        'Data Final do contrato', 'Salário'
+    ],
+}
 
 
 def gerar_ranking(df_bruto, posicao, niveis_usuario=None):
@@ -326,3 +380,243 @@ def gerar_ranking(df_bruto, posicao, niveis_usuario=None):
     df_final = df_final.sort_values(by='Nota_Moneyball', ascending=False).reset_index(drop=True)
 
     return df_final[['Jogador', 'Equipe', 'Nota_Moneyball', 'Valor estimado', 'Idade']]
+
+
+def gerar_rating_overall(df_bruto, posicao, niveis_usuario=None):
+    """
+    Calcula o Rating Overall para abas que não usam a lógica Moneyball
+    (Time Estatísticas, Overall Análise).
+
+    Diferente de gerar_ranking:
+    - NÃO considera valor de mercado, salário, idade ou contrato.
+    - NÃO possui critérios de custo (todos os critérios são "quanto maior, melhor").
+    - Todos os critérios começam como nível 3 (menos importante) por padrão,
+      e o usuário define manualmente os pesos via niveis_usuario.
+
+    niveis_usuario: dict { criterio: 0|1|2|3 }
+                    0 = Ignorar (excluído), 1/2/3 = níveis AHP.
+                    None = todos nível 3 (padrão).
+
+    Retorna: DataFrame com colunas [Jogador, Equipe, Rating_Overall]
+             ('Equipe' = '—' quando a aba não possuir essa coluna).
+             Lança ValueError com mensagem amigável em caso de erro recuperável.
+    """
+    # ── 1. Validação de entrada ────────────────────────────────────────────────
+    if posicao not in CRITERIOS_PADRAO:
+        raise ValueError(f"Aba '{posicao}' não reconhecida pelo sistema.")
+
+    if df_bruto is None or df_bruto.empty:
+        raise ValueError(f"A aba '{posicao}' está vazia na planilha.")
+
+    if 'Jogador' not in df_bruto.columns:
+        raise ValueError(f"Coluna 'Jogador' não encontrada na aba '{posicao}'.")
+
+    # ── 2. Corte e limpeza do DataFrame ───────────────────────────────────────
+    try:
+        df = df_bruto.loc[:, 'Jogador':'Nota média'].copy()
+    except KeyError:
+        raise ValueError(
+            f"Não foi possível localizar as colunas 'Jogador' e/ou 'Nota média' "
+            f"na aba '{posicao}'. Verifique se a planilha está no formato correto."
+        )
+
+    df = df.dropna(subset=[df.columns[0]])
+    if df.empty:
+        raise ValueError(f"Nenhum jogador encontrado na aba '{posicao}' após remover linhas vazias.")
+
+    # Remove linhas de seções auxiliares (ex: "Análise da Equipe" no Time Estatísticas),
+    # que não representam jogadores. Identificadas por não terem uma posição válida (string).
+    if 'Posição' in df.columns:
+        df = df[df['Posição'].apply(lambda x: isinstance(x, str))]
+        if df.empty:
+            raise ValueError(f"Nenhum jogador válido encontrado na aba '{posicao}'.")
+
+    # ── 3. Critérios e níveis ──────────────────────────────────────────────────
+    padrao = CRITERIOS_PADRAO[posicao]
+    colunas_id = COLUNAS_IDENTIFICACAO_OVERALL.get(posicao, ['Jogador'])
+    colunas_para_ver = [c for c in padrao['colunas'] if c in df.columns and c not in colunas_id]
+
+    if niveis_usuario:
+        ignorados = {c for c, n in niveis_usuario.items() if n == 0}
+        nivel_1 = [c for c, n in niveis_usuario.items() if n == 1 and c in df.columns and c not in ignorados and c not in colunas_id]
+        nivel_2 = [c for c, n in niveis_usuario.items() if n == 2 and c in df.columns and c not in ignorados and c not in colunas_id]
+        nivel_3 = [c for c, n in niveis_usuario.items() if n == 3 and c in df.columns and c not in ignorados and c not in colunas_id]
+        colunas_para_ver = [c for c in colunas_para_ver if c not in ignorados]
+
+        ativos = nivel_1 + nivel_2 + nivel_3
+        if len(ativos) < MIN_CRITERIOS_ATIVOS:
+            raise ValueError(
+                f"São necessários pelo menos {MIN_CRITERIOS_ATIVOS} critérios ativos "
+                f"para calcular o Rating Overall de {posicao}. "
+                f"Você marcou todos como 'Ignorar' ou deixou menos de {MIN_CRITERIOS_ATIVOS} ativos."
+            )
+    else:
+        # Padrão: todos os critérios começam em nível 3 (menos importante)
+        nivel_1 = []
+        nivel_2 = []
+        nivel_3 = list(colunas_para_ver)
+
+    if not colunas_para_ver:
+        raise ValueError(
+            f"Nenhuma coluna de critério encontrada na aba '{posicao}'. "
+            f"Verifique se os nomes das colunas da planilha estão corretos."
+        )
+
+    def obter_nivel(criterio):
+        if criterio in nivel_1: return 1
+        if criterio in nivel_2: return 2
+        return 3
+
+    criterios = nivel_1 + nivel_2 + nivel_3
+    n = len(criterios)
+
+    if n == 0:
+        raise ValueError(f"Nenhum critério ativo para calcular o Rating Overall de {posicao}.")
+
+    # ── 4. Matriz AHP ──────────────────────────────────────────────────────────
+    if n == 1:
+        # Caso degenerado: um único critério ativo => peso 100%
+        pesos = [1.0]
+    else:
+        matriz_saaty = np.ones((n, n))
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                t_i = obter_nivel(criterios[i])
+                t_j = obter_nivel(criterios[j])
+                if   t_i == 1 and t_j == 2: v = 2.0
+                elif t_i == 1 and t_j == 3: v = 9.0
+                elif t_i == 2 and t_j == 3: v = 5.0
+                elif t_i == 2 and t_j == 1: v = 1/2
+                elif t_i == 3 and t_j == 1: v = 1/9
+                elif t_i == 3 and t_j == 2: v = 1/5
+                else: v = 1.0
+                matriz_saaty[i, j] = v
+
+        try:
+            pesos, cr, consistente = ahp.calcular_pesos_ahp(matriz_saaty)
+        except Exception as e:
+            raise ValueError(f"Erro no cálculo AHP para {posicao}: {e}")
+
+        if pesos is None or len(pesos) != n:
+            raise ValueError(f"O cálculo AHP retornou pesos inválidos para {posicao}.")
+
+    # ── 5. Rating ──────────────────────────────────────────────────────────────
+    df_rating = df[colunas_para_ver].copy()
+
+    # Garante que todas as colunas de critério são numéricas
+    for col in colunas_para_ver:
+        df_rating[col] = pd.to_numeric(df_rating[col], errors='coerce').fillna(0)
+
+    df_rating['Rating_Overall'] = 0.0
+
+    for criterio, peso in zip(criterios, pesos):
+        if criterio not in df_rating.columns:
+            continue
+        vmax = df_rating[criterio].max()
+        vmin = df_rating[criterio].min()
+        if vmax == vmin:
+            df_rating[f'{criterio}_Norm'] = 0.0
+        else:
+            # Todos os critérios são de benefício: quanto maior, melhor
+            df_rating[f'{criterio}_Norm'] = (df_rating[criterio] - vmin) / (vmax - vmin)
+        df_rating['Rating_Overall'] += df_rating[f'{criterio}_Norm'] * peso
+
+    df_rating['Rating_Overall'] *= 100
+
+    # ── 6. Resultado ───────────────────────────────────────────────────────────
+    df_final = pd.DataFrame()
+    df_final['Jogador']        = df['Jogador'].values
+    df_final['Rating_Overall'] = df_rating['Rating_Overall'].values
+    df_final['Equipe']         = df['Equipe'].values if 'Equipe' in df.columns else '—'
+
+    df_final = df_final.sort_values(by='Rating_Overall', ascending=False).reset_index(drop=True)
+
+    return df_final[['Jogador', 'Equipe', 'Rating_Overall']]
+
+
+def extrair_estatisticas_time(df_bruto):
+    """
+    Extrai as estatísticas agregadas do time a partir da seção "Análise da Equipe"
+    presente na aba 📊Time Estatísticas (abaixo da lista de 11 titulares).
+
+    A seção é organizada como pares (label, valor) em duas colunas lado a lado,
+    a partir da linha onde a coluna 0 contém o texto "Análise da Equipe".
+
+    Retorna: dict {nome_da_metrica: valor} ou {} se a seção não for encontrada.
+    """
+    try:
+        df_raw = df_bruto.copy()
+        df_raw.columns = range(df_raw.shape[1])  # normaliza nomes de colunas para índices
+
+        # Localiza a linha que contém "Análise da Equipe" na coluna 0
+        col0 = df_raw[0].astype(str)
+        linhas_match = df_raw.index[col0.str.contains('Análise da Equipe', na=False)]
+        if len(linhas_match) == 0:
+            return {}
+
+        start_row = linhas_match[0]
+        pares = {}
+        for r in range(start_row, df_raw.shape[0]):
+            for c_label, c_val in [(0, 1), (2, 3)]:
+                if c_val >= df_raw.shape[1]:
+                    continue
+                label = df_raw.iloc[r, c_label]
+                val = df_raw.iloc[r, c_val]
+                if pd.notna(label) and pd.notna(val) and str(label) != 'Análise da Equipe':
+                    pares[str(label)] = val
+
+        return pares
+    except Exception:
+        return {}
+
+
+def gerar_olheiro_time_prompt(stats_time, jogadores_titulares, perspectiva='proprio'):
+    """
+    Monta o prompt para o Olheiro IA analisar o desempenho agregado do time.
+
+    stats_time: dict retornado por extrair_estatisticas_time
+    jogadores_titulares: lista de dicts com dados dos 11 titulares (Jogador, Posição, Nota média, etc.)
+    perspectiva: 'proprio'    -> análise interna, focada em pontos de melhoria e reforços
+                 'adversario' -> visão de scout rival, focada em como explorar o time
+    """
+    if perspectiva == 'adversario':
+        instrucoes = """
+    Você está analisando este time como o OLHEIRO DE UM CLUBE ADVERSÁRIO que vai enfrentá-lo.
+    Seu objetivo é identificar como explorar as fraquezas desta equipe.
+
+    Escreva uma análise direta e profissional do ponto de vista do adversário:
+    - Identifique as principais fragilidades estatísticas do time (defensivas, de posse, de criação
+      de chances etc.) que podem ser exploradas taticamente.
+    - Aponte quais jogadores titulares têm notas mais baixas e podem ser visados como "elos fracos"
+      durante o jogo (ex: pressão alta sobre eles, duelos individuais).
+    - Sugira no máximo 2 estratégias táticas concretas para o time adversário aproveitar essas
+      fraquezas (ex: explorar lado fraco, pressionar saída de bola, etc.).
+    - Seja objetivo e baseado em números, evitando opiniões sem fundamento estatístico.
+
+    Assine o final como Olheiro Adversário IA."""
+    else:
+        instrucoes = """
+    Você é o analista técnico DESTE PRÓPRIO TIME, avaliando o desempenho coletivo da equipe.
+
+    Escreva uma análise direta e profissional sobre o desempenho coletivo da equipe:
+    - Identifique pontos fortes e fracos com base nas estatísticas de equipe (passes, finalizações,
+      eficiência defensiva, posse de bola, etc.)
+    - Questione o desempenho da equipe: a equipe está criando chances suficientes? A defesa está sólida?
+    - Com base nas notas médias dos titulares, sugira no máximo 2 posições onde uma troca/reforço
+      poderia trazer mais impacto, justificando com os dados.
+    - Seja objetivo e baseado em números, evitando opiniões sem fundamento estatístico.
+
+    Assine o final como Olheiro IA."""
+
+    return f"""
+    Você é um analista técnico de futebol especializado em estatísticas avançadas (Football Manager).
+
+    Aqui estão as estatísticas agregadas do time (médias por 90 minutos e totais):
+    {stats_time}
+
+    Aqui está a escalação titular analisada (11 jogadores com suas notas):
+    {jogadores_titulares}
+    {instrucoes}
+    """
