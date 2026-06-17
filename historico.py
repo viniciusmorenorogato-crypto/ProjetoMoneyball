@@ -23,7 +23,6 @@ MAX_HISTORICO = 10
 TABELA = "historico_moneyball"
 
 # ── Conexão com Supabase ───────────────────────────────────────────────────
-@st.cache_resource
 def _get_supabase():
     """Retorna o cliente Supabase, usando as credenciais do secrets.toml."""
     try:
@@ -33,7 +32,6 @@ def _get_supabase():
         client = create_client(url, key)
         return client
     except KeyError as e:
-        # Chave não encontrada no secrets.toml
         print(f"[Supabase] Chave ausente no secrets: {e}")
         return None
     except Exception as e:
@@ -44,9 +42,11 @@ def _get_supabase():
 def supabase_disponivel() -> bool:
     """Retorna True se o Supabase está configurado e acessível."""
     try:
-        # Verifica se as chaves existem antes de tentar conectar
         _ = st.secrets["SUPABASE_URL"]
         _ = st.secrets["SUPABASE_KEY"]
+    except Exception:
+        return False
+    try:
         client = _get_supabase()
         return client is not None
     except Exception:
@@ -56,18 +56,25 @@ def supabase_disponivel() -> bool:
 def diagnostico_supabase() -> str:
     """Retorna uma string descrevendo o estado da conexão (para debug)."""
     try:
-        url = st.secrets.get("SUPABASE_URL", None)
-        key = st.secrets.get("SUPABASE_KEY", None)
-        if not url:
-            return "❌ SUPABASE_URL não encontrada no secrets"
-        if not key:
-            return "❌ SUPABASE_KEY não encontrada no secrets"
+        url = st.secrets["SUPABASE_URL"]
+    except Exception:
+        url = None
+    try:
+        key = st.secrets["SUPABASE_KEY"]
+    except Exception:
+        key = None
+
+    if not url:
+        return "❌ SUPABASE_URL não encontrada no secrets"
+    if not key:
+        return "❌ SUPABASE_KEY não encontrada no secrets"
+    try:
         client = _get_supabase()
         if client is None:
             return "❌ Cliente Supabase retornou None (erro ao conectar)"
         return f"✅ Conectado ({url[:40]}...)"
     except Exception as e:
-        return f"❌ Exceção: {e}"
+        return f"❌ Erro ao conectar: {e}"
 
 
 # ── Identificação do usuário ───────────────────────────────────────────────
