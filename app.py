@@ -469,12 +469,6 @@ if st.session_state.get('ver_historico'):
     if not hist.supabase_disponivel():
         _diag = hist.diagnostico_supabase()
         st.error(f"Não foi possível conectar ao banco de dados. **Diagnóstico:** {_diag}")
-        # Mostra todas as chaves disponíveis no secrets para debug
-        try:
-            chaves = list(st.secrets.keys())
-            st.warning(f"Chaves encontradas no secrets: `{chaves}`")
-        except Exception as e:
-            st.warning(f"Erro ao listar secrets: {e}")
         if st.button("← Voltar", key="fechar_historico_erro"):
             st.session_state['ver_historico'] = False
             st.rerun()
