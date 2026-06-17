@@ -384,18 +384,17 @@ if st.session_state.get('reiniciando'):
     MODOS['posicoes']['abas'] = POSICOES
     st.rerun()
 
-# Botão de histórico (só aparece se Supabase estiver configurado)
-if hist.supabase_disponivel():
-    st.sidebar.markdown("---")
-    col_h1, col_h2 = st.sidebar.columns(2)
-    if col_h1.button("📊 Ranking", use_container_width=True, key="btn_historico"):
-        st.session_state['ver_historico'] = not st.session_state.get('ver_historico', False)
-        st.session_state['ver_emails_olheiro'] = False
-        st.rerun()
-    if col_h2.button("📬 Olheiro", use_container_width=True, key="btn_emails_olheiro"):
-        st.session_state['ver_emails_olheiro'] = not st.session_state.get('ver_emails_olheiro', False)
-        st.session_state['ver_historico'] = False
-        st.rerun()
+# Botão de histórico — aparece sempre; mostra diagnóstico se Supabase falhar
+st.sidebar.markdown("---")
+col_h1, col_h2 = st.sidebar.columns(2)
+if col_h1.button("📊 Ranking", use_container_width=True, key="btn_historico"):
+    st.session_state['ver_historico'] = not st.session_state.get('ver_historico', False)
+    st.session_state['ver_emails_olheiro'] = False
+    st.rerun()
+if col_h2.button("📬 Olheiro", use_container_width=True, key="btn_emails_olheiro"):
+    st.session_state['ver_emails_olheiro'] = not st.session_state.get('ver_emails_olheiro', False)
+    st.session_state['ver_historico'] = False
+    st.rerun()
 
 st.sidebar.markdown(
     "<div class='sidebar-footer'>Feito por <strong>Vinícius Rogato</strong></div>",
@@ -464,9 +463,16 @@ if st.session_state.get('reiniciando'):
 # TELA DE HISTÓRICO
 # (disponível a qualquer momento, inclusive sem planilha carregada)
 # ==========================================
-if st.session_state.get('ver_historico') and hist.supabase_disponivel():
+if st.session_state.get('ver_historico'):
     st.markdown("## 📊 Histórico de Ranking")
     st.caption(f"ID de sessão: `{_usuario_id[:8]}...` · Últimos {hist.MAX_HISTORICO} cálculos salvos.")
+    if not hist.supabase_disponivel():
+        _diag = hist.diagnostico_supabase()
+        st.error(f"Não foi possível conectar ao banco de dados. **Diagnóstico:** {_diag}")
+        if st.button("← Voltar", key="fechar_historico_erro"):
+            st.session_state['ver_historico'] = False
+            st.rerun()
+        st.stop()
 
     st.info(
         "🕐 **Limpeza automática:** registros com mais de 7 dias são removidos automaticamente "
@@ -526,9 +532,16 @@ if st.session_state.get('ver_historico') and hist.supabase_disponivel():
 # ==========================================
 # TELA DE E-MAILS DO OLHEIRO
 # ==========================================
-if st.session_state.get('ver_emails_olheiro') and hist.supabase_disponivel():
+if st.session_state.get('ver_emails_olheiro'):
     st.markdown("## 📬 E-mails do Olheiro")
     st.caption(f"ID de sessão: `{_usuario_id[:8]}...` · Últimos {hist.MAX_EMAILS} relatórios salvos.")
+    if not hist.supabase_disponivel():
+        _diag = hist.diagnostico_supabase()
+        st.error(f"Não foi possível conectar ao banco de dados. **Diagnóstico:** {_diag}")
+        if st.button("← Voltar", key="fechar_emails_erro"):
+            st.session_state['ver_emails_olheiro'] = False
+            st.rerun()
+        st.stop()
 
     st.info(
         "🕐 **Limpeza automática:** registros com mais de 7 dias são removidos automaticamente "

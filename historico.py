@@ -30,18 +30,44 @@ def _get_supabase():
         from supabase import create_client
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
-        return create_client(url, key)
+        client = create_client(url, key)
+        return client
+    except KeyError as e:
+        # Chave não encontrada no secrets.toml
+        print(f"[Supabase] Chave ausente no secrets: {e}")
+        return None
     except Exception as e:
+        print(f"[Supabase] Erro ao conectar: {e}")
         return None
 
 
-def supabase_disponivel():
+def supabase_disponivel() -> bool:
     """Retorna True se o Supabase está configurado e acessível."""
     try:
+        # Verifica se as chaves existem antes de tentar conectar
+        _ = st.secrets["SUPABASE_URL"]
+        _ = st.secrets["SUPABASE_KEY"]
         client = _get_supabase()
         return client is not None
     except Exception:
         return False
+
+
+def diagnostico_supabase() -> str:
+    """Retorna uma string descrevendo o estado da conexão (para debug)."""
+    try:
+        url = st.secrets.get("SUPABASE_URL", None)
+        key = st.secrets.get("SUPABASE_KEY", None)
+        if not url:
+            return "❌ SUPABASE_URL não encontrada no secrets"
+        if not key:
+            return "❌ SUPABASE_KEY não encontrada no secrets"
+        client = _get_supabase()
+        if client is None:
+            return "❌ Cliente Supabase retornou None (erro ao conectar)"
+        return f"✅ Conectado ({url[:40]}...)"
+    except Exception as e:
+        return f"❌ Exceção: {e}"
 
 
 # ── Identificação do usuário ───────────────────────────────────────────────
