@@ -1,10 +1,18 @@
 import streamlit as st
 import pandas as pd
 import main
+import historico as hist
 from main import CRITERIOS_PADRAO, POSICOES_OVERALL, COLUNAS_IDENTIFICACAO_OVERALL, extrair_estatisticas_time, gerar_olheiro_time_prompt
 import google.generativeai as genai
 import altair as alt
 import math
+
+# Identificação do usuário via UUID persistido em query_params
+# (executado antes de qualquer outro código para garantir que o UUID existe)
+try:
+    _usuario_id = hist.obter_ou_criar_usuario_id()
+except Exception:
+    _usuario_id = "anonimo"
 
 st.set_page_config(
     page_title="Scout Moneyball",
@@ -275,9 +283,17 @@ col_btn1, col_btn2 = st.sidebar.columns(2)
 
 # Abas a processar de acordo com o modo escolhido
 _modo_atual_calc = st.session_state.get('modo_analise')
-_abas_do_modo = MODOS[_modo_atual_calc]['abas'] if _modo_atual_calc in MODOS else []
+if _modo_atual_calc == 'posicoes':
+    # Usa as posições confirmadas no popover (salvas no session_state)
+    # Fallback para todas as posições se ainda não configurado
+    _posicoes_sel = st.session_state.get('posicoes_confirmadas', POSICOES)
+    _abas_do_modo = _posicoes_sel
+elif _modo_atual_calc in MODOS:
+    _abas_do_modo = MODOS[_modo_atual_calc]['abas']
+else:
+    _abas_do_modo = []
 
-# Tempo de aba de Time não precisa de cálculo AHP — só extração de estatísticas
+# Aba de Time não precisa de cálculo AHP — só extração de estatísticas
 _abas_para_ahp = [a for a in _abas_do_modo if a != POSICAO_TIME]
 
 # Para modo Overall, exige que todas as abas AHP estejam configuradas antes de habilitar
@@ -334,6 +350,15 @@ if (arquivo_upload is not None and not st.session_state['ja_calculou']
             else:
                 st.session_state['rankings'] = rankings
                 st.session_state['ja_calculou'] = True
+
+                # Salva no histórico (silencioso — não bloqueia em caso de erro)
+                if rankings and hist.supabase_disponivel():
+                    try:
+                        _modo_salvo = st.session_state.get('modo_analise', 'posicoes')
+                        hist.salvar_calculo(_usuario_id, rankings, _modo_salvo)
+                    except Exception:
+                        pass
+
                 st.rerun()
 
 if st.session_state['ja_calculou']:
@@ -344,7 +369,7 @@ if st.session_state['ja_calculou']:
 if st.session_state.get('reiniciando'):
     for key in ['ja_calculou', 'rankings', 'banco_de_dados_completo',
                 'secao_ativa', 'niveis_usuario', 'configurado', 'erros_calculo', 'reiniciando',
-                'modo_analise', 'modo_confirmado']:
+                'modo_analise', 'modo_confirmado', 'posicoes_selecionadas', 'posicoes_confirmadas']:
         if key in st.session_state:
             del st.session_state[key]
     for pos in POSICOES_TODAS:
@@ -355,7 +380,22 @@ if st.session_state.get('reiniciando'):
     if k_time in st.session_state:
         del st.session_state[k_time]
     st.session_state['ja_calculou'] = False
+    # Restaura as abas padrão de posicoes (podem ter sido filtradas pelo popover)
+    MODOS['posicoes']['abas'] = POSICOES
     st.rerun()
+
+# Botão de histórico (só aparece se Supabase estiver configurado)
+if hist.supabase_disponivel():
+    st.sidebar.markdown("---")
+    col_h1, col_h2 = st.sidebar.columns(2)
+    if col_h1.button("📊 Ranking", use_container_width=True, key="btn_historico"):
+        st.session_state['ver_historico'] = not st.session_state.get('ver_historico', False)
+        st.session_state['ver_emails_olheiro'] = False
+        st.rerun()
+    if col_h2.button("📬 Olheiro", use_container_width=True, key="btn_emails_olheiro"):
+        st.session_state['ver_emails_olheiro'] = not st.session_state.get('ver_emails_olheiro', False)
+        st.session_state['ver_historico'] = False
+        st.rerun()
 
 st.sidebar.markdown(
     "<div class='sidebar-footer'>Feito por <strong>Vinícius Rogato</strong></div>",
@@ -419,6 +459,124 @@ if st.session_state.get('reiniciando'):
     </div>
     """, unsafe_allow_html=True)
     st.stop()
+
+# ==========================================
+# TELA DE HISTÓRICO
+# (disponível a qualquer momento, inclusive sem planilha carregada)
+# ==========================================
+if st.session_state.get('ver_historico') and hist.supabase_disponivel():
+    st.markdown("## 📊 Histórico de Ranking")
+    st.caption(f"ID de sessão: `{_usuario_id[:8]}...` · Últimos {hist.MAX_HISTORICO} cálculos salvos.")
+
+    st.info(
+        "🕐 **Limpeza automática:** registros com mais de 7 dias são removidos automaticamente "
+        "todos os dias às 5h da manhã (horário de Brasília).",
+        icon="🗑️"
+    )
+
+    with st.spinner("Carregando histórico..."):
+        entradas = hist.carregar_historico(_usuario_id)
+
+    if not entradas:
+        st.info("Nenhum cálculo salvo ainda. Faça seu primeiro cálculo para começar a registrar o histórico.")
+    else:
+        for i, entrada in enumerate(entradas):
+            dt = entrada.get("criado_em", "")
+            try:
+                dt_fmt = dt[:16].replace("T", " ")
+            except Exception:
+                dt_fmt = dt
+
+            modo_entry = entrada.get("modo", "posicoes")
+            modo_label = {"posicoes": "⚽ Posições", "time": "📊 Time", "overall": "🔍 Overall"}.get(modo_entry, modo_entry)
+            dados = entrada.get("dados", {})
+            n_pos = len(dados)
+
+            with st.expander(f"**{dt_fmt}** · {modo_label} · {n_pos} posição(ões)", expanded=(i == 0)):
+                if not dados:
+                    st.caption("Sem dados salvos nesta entrada.")
+                else:
+                    for posicao, jogadores in dados.items():
+                        st.markdown(f"**{posicao}**")
+                        if jogadores:
+                            df_hist = pd.DataFrame(jogadores)
+                            nota_col = "Nota_Moneyball" if "Nota_Moneyball" in df_hist.columns else "Rating_Overall"
+                            col_config_h = {}
+                            if nota_col in df_hist.columns:
+                                col_config_h[nota_col] = st.column_config.ProgressColumn(
+                                    nota_col.replace("_", " "), min_value=0, max_value=100, format="%.1f")
+                            st.dataframe(df_hist, column_config=col_config_h, hide_index=True)
+                        else:
+                            st.caption("Sem jogadores nesta posição.")
+
+                col_del, _ = st.columns([1, 4])
+                if col_del.button("🗑️ Remover entrada", key=f"del_hist_{entrada['id']}", type="secondary"):
+                    if hist.deletar_entrada(entrada["id"]):
+                        st.success("Entrada removida.")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao remover entrada.")
+
+    st.markdown("---")
+    if st.button("← Voltar", key="fechar_historico"):
+        st.session_state['ver_historico'] = False
+        st.rerun()
+
+
+# ==========================================
+# TELA DE E-MAILS DO OLHEIRO
+# ==========================================
+if st.session_state.get('ver_emails_olheiro') and hist.supabase_disponivel():
+    st.markdown("## 📬 E-mails do Olheiro")
+    st.caption(f"ID de sessão: `{_usuario_id[:8]}...` · Últimos {hist.MAX_EMAILS} relatórios salvos.")
+
+    st.info(
+        "🕐 **Limpeza automática:** registros com mais de 7 dias são removidos automaticamente "
+        "todos os dias às 5h da manhã (horário de Brasília).",
+        icon="🗑️"
+    )
+
+    with st.spinner("Carregando e-mails..."):
+        emails = hist.carregar_emails_olheiro(_usuario_id)
+
+    if not emails:
+        st.info("Nenhum relatório salvo ainda. Gere uma análise com o Olheiro IA para começar.")
+    else:
+        MODO_LABELS = {"posicoes": "⚽ Posições", "time": "📊 Time", "overall": "🔍 Overall"}
+        PERSP_LABELS = {"proprio": "🛡️ Meu Time", "adversario": "🎯 Adversário", "": ""}
+
+        for i, email in enumerate(emails):
+            dt = email.get("criado_em", "")
+            try:
+                from datetime import datetime as _dt
+                dt_obj = _dt.fromisoformat(dt.replace("Z", "+00:00"))
+                dt_fmt = dt_obj.strftime("%d/%m %H:%M")
+            except Exception:
+                dt_fmt = dt[:16].replace("T", " ")
+
+            posicao_e  = email.get("posicao", "—")
+            persp_e    = PERSP_LABELS.get(email.get("perspectiva", ""), "")
+            titulo = f"{posicao_e} · {dt_fmt}" + (f" · {persp_e}" if persp_e else "")
+
+            with st.expander(titulo, expanded=(i == 0)):
+                st.markdown(email.get("texto", "—"))
+                col_del, _ = st.columns([1, 4])
+                if col_del.button("🗑️ Remover", key=f"del_email_{email['id']}", type="secondary"):
+                    if hist.deletar_email_olheiro(email["id"]):
+                        st.success("Relatório removido.")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao remover.")
+
+    st.markdown("---")
+    if st.button("← Voltar", key="fechar_emails_olheiro"):
+        st.session_state['ver_emails_olheiro'] = False
+        st.rerun()
+
+    st.stop()
+
+    st.stop()
+
 
 if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.session_state:
 
@@ -541,16 +699,28 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
         st.markdown("### 🔄 Última atualização")
         st.space("small")
 
-        st.markdown('<span class="update-tag">v2.3 · Jun 2025</span>', unsafe_allow_html=True)
-        v23 = [
-            "Seleção de modo de análise: Posições, Time ou Overall",
-            "Modo Time: dashboard agregado da equipe (por 90 min) + Olheiro do Time",
-            "Modo Overall: Rating Overall via AHP com configuração de critérios obrigatória",
-            "Sidebar dinâmica — seções mudam conforme o modo escolhido",
-            "Critérios das abas Overall filtrados para métricas por 90 minutos e percentuais",
+        st.markdown('<span class="update-tag">v2.4 · Jun 2025</span>', unsafe_allow_html=True)
+        v24 = [
+            "Seleção de posições via popover — escolha quais posições analisar antes de calcular",
+            "Histórico de cálculos por usuário via Supabase (top 10 por posição, últimas 10 sessões)",
+            "Histórico acessível a qualquer momento, mesmo sem planilha carregada",
+            "Limpeza automática do histórico a cada 24h às 5h (via pg_cron no Supabase)",
+            "Perspectiva dupla no Olheiro do Time: análise interna ou visão de scout adversário",
         ]
-        for n in v23:
+        for n in v24:
             st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
+
+        st.space("small")
+        with st.expander("📋 v2.3 · Jun 2025 — notas anteriores"):
+            v23 = [
+                "Seleção de modo de análise: Posições, Time ou Overall",
+                "Modo Time: dashboard agregado da equipe (por 90 min) + Olheiro do Time",
+                "Modo Overall: Rating Overall via AHP com configuração de critérios obrigatória",
+                "Sidebar dinâmica — seções mudam conforme o modo escolhido",
+                "Critérios das abas Overall filtrados para métricas por 90 minutos e percentuais",
+            ]
+            for n in v23:
+                st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
 
         st.space("small")
         with st.expander("📋 v2.2 · Jun 2025 — notas anteriores"):
@@ -712,10 +882,48 @@ if not st.session_state['ja_calculou'] and not st.session_state['modo_confirmado
             """, unsafe_allow_html=True)
 
             if disponivel:
-                if st.button(f"Selecionar {info['label']}", key=f"modo_{chave_modo}", use_container_width=True):
-                    st.session_state['modo_analise'] = chave_modo
-                    st.session_state['modo_confirmado'] = True
-                    st.rerun()
+                # Modo Posições: popover com checkboxes para selecionar quais posições analisar
+                if chave_modo == 'posicoes':
+                    with st.popover(f"Selecionar {info['label']}", use_container_width=True):
+                        st.markdown("**Escolha as posições a analisar:**")
+                        st.caption("Todas ativas por padrão.")
+
+                        chave_sel = 'posicoes_selecionadas'
+                        if chave_sel not in st.session_state:
+                            st.session_state[chave_sel] = {p: True for p in abas_presentes}
+
+                        # Garante que posições novas (da planilha atual) estejam ativas
+                        for p in abas_presentes:
+                            if p not in st.session_state[chave_sel]:
+                                st.session_state[chave_sel][p] = True
+
+                        for posicao_opt in abas_presentes:
+                            st.session_state[chave_sel][posicao_opt] = st.checkbox(
+                                posicao_opt,
+                                value=st.session_state[chave_sel].get(posicao_opt, True),
+                                key=f"chk_{posicao_opt}"
+                            )
+
+                        ativas = [p for p in abas_presentes if st.session_state[chave_sel].get(p)]
+                        st.caption(f"{len(ativas)} de {len(abas_presentes)} posições selecionadas.")
+
+                        if st.button("✅ Confirmar seleção", key="confirmar_posicoes",
+                                     use_container_width=True, type="primary",
+                                     disabled=len(ativas) == 0):
+                            # Persiste a seleção no session_state para sobreviver ao rerun
+                            st.session_state['posicoes_confirmadas'] = ativas
+                            st.session_state['modo_analise'] = 'posicoes'
+                            st.session_state['modo_confirmado'] = True
+                            st.rerun()
+
+                        if len(ativas) == 0:
+                            st.warning("Selecione ao menos uma posição.")
+                else:
+                    if st.button(f"Selecionar {info['label']}", key=f"modo_{chave_modo}",
+                                 use_container_width=True):
+                        st.session_state['modo_analise'] = chave_modo
+                        st.session_state['modo_confirmado'] = True
+                        st.rerun()
             else:
                 st.caption("⚠️ Aba não encontrada na planilha")
 
@@ -824,7 +1032,7 @@ def render_secao(posicao, df_filtrado, df_da_posicao, secao):
     if posicao in erros_calculo:
         st.error(f"⚠️ Erro ao calcular {posicao}: {erros_calculo[posicao]}")
         if "Ignorar" in erros_calculo[posicao] or "critérios" in erros_calculo[posicao].lower():
-            st.info("💡 Clique em **🔧 Reconfigurar critérios** abaixo e ative pelo menos 2 atributos.")
+            st.info("💡 Use 🔄 Recomeçar na sidebar para reconfigurar os critérios e recalcular.")
         return
 
     if df_filtrado is None or df_filtrado.empty:
@@ -1029,6 +1237,15 @@ def render_secao(posicao, df_filtrado, df_da_posicao, secao):
                     try:
                         resposta = modelo_ia.generate_content(prompt)
                         st.session_state[chave_ia] = resposta.text
+                        if hist.supabase_disponivel():
+                            try:
+                                hist.salvar_email_olheiro(
+                                    _usuario_id, posicao,
+                                    st.session_state.get('modo_analise', 'posicoes'),
+                                    '', resposta.text
+                                )
+                            except Exception:
+                                pass
                         st.rerun()
                     except Exception:
                         st.session_state[chave_ia] = "⚠️ Limite de velocidade do Google atingido. Aguarde 1 minuto e tente novamente."
@@ -1491,6 +1708,14 @@ def render_secao_overall(posicao, df_filtrado, df_da_posicao, secao):
                     try:
                         resposta = modelo_ia.generate_content(prompt)
                         st.session_state[chave_ia] = resposta.text
+                        if hist.supabase_disponivel():
+                            try:
+                                hist.salvar_email_olheiro(
+                                    _usuario_id, posicao, 'overall',
+                                    '', resposta.text
+                                )
+                            except Exception:
+                                pass
                         st.rerun()
                     except Exception:
                         st.session_state[chave_ia] = "⚠️ Limite de velocidade do Google atingido. Aguarde 1 minuto e tente novamente."
@@ -1783,6 +2008,14 @@ def render_secao_time(posicao, secao):
                     try:
                         resposta = modelo_ia.generate_content(prompt)
                         st.session_state[chave_ia] = resposta.text
+                        if hist.supabase_disponivel():
+                            try:
+                                hist.salvar_email_olheiro(
+                                    _usuario_id, posicao, 'time',
+                                    perspectiva_ativa, resposta.text
+                                )
+                            except Exception:
+                                pass
                         st.rerun()
                     except Exception:
                         st.session_state[chave_ia] = "⚠️ Limite de velocidade do Google atingido. Aguarde 1 minuto e tente novamente."
@@ -1851,7 +2084,10 @@ st.markdown("""
 
 # Abas disponíveis de acordo com o modo de análise escolhido
 modo_atual = st.session_state.get('modo_analise', 'posicoes')
-abas_do_modo = MODOS.get(modo_atual, MODOS['posicoes'])['abas']
+if modo_atual == 'posicoes':
+    abas_do_modo = st.session_state.get('posicoes_confirmadas', POSICOES)
+else:
+    abas_do_modo = MODOS.get(modo_atual, MODOS['posicoes'])['abas']
 
 if st.session_state['ja_calculou']:
     # Time não entra em "rankings" (não usa AHP) — sempre disponível se estiver no banco
@@ -2175,17 +2411,6 @@ for aba, posicao in zip(abas, posicoes_disponiveis):
                 st.caption("⚠️ É necessário confirmar os critérios desta aba antes de calcular.")
 
             continue
-
-        # Botão de reconfigurar esta posição (aparece só após calcular)
-        if st.session_state['ja_calculou']:
-            if st.button(f"🔧 Reconfigurar critérios — {posicao}", key=f"reconfig_{posicao}"):
-                st.session_state['configurado'][posicao] = False
-                if posicao in st.session_state['rankings']:
-                    del st.session_state['rankings'][posicao]
-                k_ia = f'relatorio_ia_{posicao}'
-                if k_ia in st.session_state:
-                    del st.session_state[k_ia]
-                st.rerun()
 
         df_filtrado, df_da_posicao = montar_df(posicao)
 
