@@ -386,6 +386,7 @@ if st.session_state.get('reiniciando'):
 
 # Botão de histórico — aparece sempre; mostra diagnóstico se Supabase falhar
 st.sidebar.markdown("---")
+st.sidebar.markdown("**📜 Histórico**")
 col_h1, col_h2 = st.sidebar.columns(2)
 if col_h1.button("📊 Ranking", use_container_width=True, key="btn_historico"):
     st.session_state['ver_historico'] = not st.session_state.get('ver_historico', False)
