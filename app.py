@@ -900,38 +900,38 @@ if not st.session_state['ja_calculou'] and not st.session_state['modo_confirmado
                 if chave_modo == 'posicoes':
                     with st.popover(f"Selecionar {info['label']}", use_container_width=True):
                         st.markdown("**Escolha as posições a analisar:**")
-                        st.caption("Todas ativas por padrão.")
+                        st.caption("Nenhuma selecionada por padrão — marque as que deseja.")
 
                         chave_sel = 'posicoes_selecionadas'
                         if chave_sel not in st.session_state:
-                            st.session_state[chave_sel] = {p: True for p in abas_presentes}
+                            # Padrão: todas desmarcadas
+                            st.session_state[chave_sel] = {p: False for p in abas_presentes}
 
-                        # Garante que posições novas (da planilha atual) estejam ativas
+                        # Garante que posições novas da planilha entrem como desmarcadas
                         for p in abas_presentes:
                             if p not in st.session_state[chave_sel]:
-                                st.session_state[chave_sel][p] = True
+                                st.session_state[chave_sel][p] = False
 
                         for posicao_opt in abas_presentes:
                             st.session_state[chave_sel][posicao_opt] = st.checkbox(
                                 posicao_opt,
-                                value=st.session_state[chave_sel].get(posicao_opt, True),
+                                value=st.session_state[chave_sel].get(posicao_opt, False),
                                 key=f"chk_{posicao_opt}"
                             )
 
                         ativas = [p for p in abas_presentes if st.session_state[chave_sel].get(p)]
                         st.caption(f"{len(ativas)} de {len(abas_presentes)} posições selecionadas.")
 
+                        if len(ativas) == 0:
+                            st.warning("⚠️ Selecione ao menos uma posição para continuar.")
+
                         if st.button("✅ Confirmar seleção", key="confirmar_posicoes",
                                      use_container_width=True, type="primary",
                                      disabled=len(ativas) == 0):
-                            # Persiste a seleção no session_state para sobreviver ao rerun
                             st.session_state['posicoes_confirmadas'] = ativas
                             st.session_state['modo_analise'] = 'posicoes'
                             st.session_state['modo_confirmado'] = True
                             st.rerun()
-
-                        if len(ativas) == 0:
-                            st.warning("Selecione ao menos uma posição.")
                 else:
                     if st.button(f"Selecionar {info['label']}", key=f"modo_{chave_modo}",
                                  use_container_width=True):
