@@ -422,7 +422,7 @@ if _chave_pix:
             _qr_pix = pix.gerar_qr_pix(_payload_pix)
             if _qr_pix is not None:
                 _col_qr = st.columns([1, 2, 1])[1]
-                _col_qr.image(_qr_pix, caption="Escaneie no app do seu banco", use_container_width=True)
+                _col_qr.image(_qr_pix, caption="Escaneie no app do seu banco", width=180)
             st.markdown("**Chave Pix**")
             st.code(_chave_pix, language=None)
             st.markdown("**Pix copia e cola**")
