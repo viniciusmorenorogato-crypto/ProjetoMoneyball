@@ -6,6 +6,7 @@ from main import CRITERIOS_PADRAO, POSICOES_OVERALL, COLUNAS_IDENTIFICACAO_OVERA
 import google.generativeai as genai
 import altair as alt
 import math
+from Funções import pix
 
 # Identificação do usuário via UUID persistido em query_params
 # (executado antes de qualquer outro código para garantir que o UUID existe)
@@ -396,6 +397,36 @@ if col_h2.button("📬 Olheiro", use_container_width=True, key="btn_emails_olhei
     st.session_state['ver_emails_olheiro'] = not st.session_state.get('ver_emails_olheiro', False)
     st.session_state['ver_historico'] = False
     st.rerun()
+
+# ==========================================
+# APOIO VIA PIX
+# ==========================================
+# A chave fica nos secrets (CHAVE_PIX) para não expor dado pessoal no repositório.
+# Sem a chave configurada, o botão simplesmente não aparece.
+try:
+    _chave_pix = str(st.secrets.get("CHAVE_PIX", "")).strip()
+    _nome_pix = str(st.secrets.get("PIX_NOME", "Vinicius Rogato")).strip()
+    _cidade_pix = str(st.secrets.get("PIX_CIDADE", "Sao Paulo")).strip()
+except Exception:
+    _chave_pix = ""
+
+if _chave_pix:
+    with st.sidebar:
+        with st.popover("💚 Apoiar o projeto (Pix)", use_container_width=True):
+            st.markdown("**Gostou do Scout Moneyball?**")
+            st.caption(
+                "O app é gratuito e mantido por uma pessoa só. "
+                "Se ele te ajudou a montar seu elenco, considere apoiar com qualquer valor. 💚"
+            )
+            _payload_pix = pix.gerar_payload_pix(_chave_pix, _nome_pix, _cidade_pix)
+            _qr_pix = pix.gerar_qr_pix(_payload_pix)
+            if _qr_pix is not None:
+                _col_qr = st.columns([1, 2, 1])[1]
+                _col_qr.image(_qr_pix, caption="Escaneie no app do seu banco", use_container_width=True)
+            st.markdown("**Chave Pix**")
+            st.code(_chave_pix, language=None)
+            st.markdown("**Pix copia e cola**")
+            st.code(_payload_pix, language=None, wrap_lines=True)
 
 st.sidebar.markdown(
     "<div class='sidebar-footer'>Feito por <strong>Vinícius Rogato</strong></div>",

@@ -1,1 +1,25 @@
+# Segredos locais do Streamlit (chave Pix, chave da IA) — nunca commitar
 .streamlit/secrets.toml
+
+# Ambiente virtual
+.venv/
+
+# Arquivos gerados pelo projeto
+Goleiros_Moneyball_Limpos.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ferramentas locais
+.claude/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
