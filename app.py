@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 import main
 import historico as hist
 from main import CRITERIOS_PADRAO, POSICOES_OVERALL, COLUNAS_IDENTIFICACAO_OVERALL, extrair_estatisticas_time, gerar_olheiro_time_prompt
@@ -49,6 +50,36 @@ POSICAO_OVERALL = '🔍Overall Análise'
 
 # Abas que usam Rating Overall (sem lógica de custo/benefício Moneyball)
 POSICOES_TODAS = POSICOES + POSICOES_OVERALL
+
+
+# ==========================================
+# NORMALIZAÇÃO DAS ABAS DA PLANILHA
+# O app casa as abas pelo NOME (ex.: "Zagueiros"), tolerando diferenças de
+# emoji na frente entre versões da planilha. Sem isso, uma aba "🛡️Zagueiros"
+# não seria reconhecida quando o app espera "🧱Zagueiros", e a posição
+# simplesmente não apareceria para escolher.
+# ==========================================
+def _nome_base_aba(nome):
+    """Remove emojis/símbolos e espaços iniciais, deixando só o texto do nome.
+    Ex.: '🛡️Zagueiros' -> 'Zagueiros'."""
+    return re.sub(r'^[^0-9A-Za-zÀ-ÿ]+', '', str(nome)).strip()
+
+
+# nome-base (sem emoji) -> nome canônico que o app usa internamente
+_MAPA_NOME_CANONICO = {_nome_base_aba(p): p for p in POSICOES_TODAS}
+
+
+def normalizar_banco(banco):
+    """Renomeia as abas lidas da planilha para os nomes canônicos do app,
+    casando pelo nome-base (ignorando o emoji). Abas sem correspondência
+    mantêm o nome original."""
+    if not isinstance(banco, dict):
+        return banco
+    banco_norm = {}
+    for nome, df in banco.items():
+        canonico = _MAPA_NOME_CANONICO.get(_nome_base_aba(nome), nome)
+        banco_norm[canonico] = df
+    return banco_norm
 
 # Modos de análise disponíveis
 MODOS = {
@@ -311,7 +342,8 @@ if (arquivo_upload is not None and not st.session_state['ja_calculou']
     elif col_btn1.button("🚀 Calcular", use_container_width=True):
         with st.spinner("Processando..."):
             try:
-                banco = st.session_state.get('banco_de_dados_completo') or                         pd.read_excel(arquivo_upload, sheet_name=None, engine='openpyxl')
+                banco = st.session_state.get('banco_de_dados_completo') or normalizar_banco(
+                    pd.read_excel(arquivo_upload, sheet_name=None, engine='openpyxl'))
                 st.session_state['banco_de_dados_completo'] = banco
             except Exception as e:
                 st.error(f"Não foi possível ler a planilha: {e}")
@@ -454,9 +486,10 @@ if arquivo_upload is None and not st.session_state['ja_calculou']:
 
 if arquivo_upload is not None and 'banco_de_dados_completo' not in st.session_state:
     with st.spinner("⏳ Lendo planilha..."):
-        st.session_state['banco_de_dados_completo'] = pd.read_excel(
+        _banco_lido = pd.read_excel(
             arquivo_upload, sheet_name=None, engine='openpyxl'
         )
+        st.session_state['banco_de_dados_completo'] = normalizar_banco(_banco_lido)
     st.rerun()
 
 # Tela intermediária de reiniciando (renderiza antes do rerun limpar o estado)
@@ -744,16 +777,25 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
         st.markdown("### 🔄 Última atualização")
         st.space("small")
 
-        st.markdown('<span class="update-tag">v2.4 · Jun 2025</span>', unsafe_allow_html=True)
-        v24 = [
-            "Seleção de posições via popover — escolha quais posições analisar antes de calcular",
-            "Histórico de cálculos por usuário via Supabase (top 10 por posição, últimas 10 sessões)",
-            "Histórico acessível a qualquer momento, mesmo sem planilha carregada",
-            "Limpeza automática do histórico a cada 24h às 5h (via pg_cron no Supabase)",
-            "Perspectiva dupla no Olheiro do Time: análise interna ou visão de scout adversário",
+        st.markdown('<span class="update-tag">v2.5 · Ago 2026</span>', unsafe_allow_html=True)
+        v25 = [
+            "Compatibilidade com diferentes versões da planilha — as posições agora são reconhecidas pelo nome da aba, independentemente do emoji (corrige posições que não apareciam para seleção)",
+            "Botão de download da planilha Moneyball (Allan FCL) na tela inicial",
         ]
-        for n in v24:
+        for n in v25:
             st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
+
+        st.space("small")
+        with st.expander("📋 v2.4 · Jun 2025 — notas anteriores"):
+            v24 = [
+                "Seleção de posições via popover — escolha quais posições analisar antes de calcular",
+                "Histórico de cálculos por usuário via Supabase (top 10 por posição, últimas 10 sessões)",
+                "Histórico acessível a qualquer momento, mesmo sem planilha carregada",
+                "Limpeza automática do histórico a cada 24h às 5h (via pg_cron no Supabase)",
+                "Perspectiva dupla no Olheiro do Time: análise interna ou visão de scout adversário",
+            ]
+            for n in v24:
+                st.markdown(f'<div class="update-item">• {n}</div>', unsafe_allow_html=True)
 
         st.space("small")
         with st.expander("📋 v2.3 · Jun 2025 — notas anteriores"):
@@ -837,6 +879,15 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
         }}
         .ch-info-title {{ font-size:0.77rem; font-weight:700; color:#22C55E; margin-bottom:3px; }}
         .ch-info-desc {{ font-size:0.72rem; color:#9CA3AF; line-height:1.45; }}
+        .ch-dl {{
+            display:inline-flex; align-items:center; gap:4px; margin-top:8px;
+            background:#22C55E; color:#04120A !important; border-radius:6px;
+            padding:4px 9px; font-size:0.68rem; font-weight:700;
+            text-decoration:none !important; transition: background .2s, transform .2s;
+        }}
+        .ch-dl:hover {{
+            background:#4ADE80; transform:translateY(-1px); text-decoration:none !important;
+        }}
         </style>
         <div class="ch-row">
           <a href="https://www.youtube.com/@AllanFCL" target="_blank" class="ch-card">
@@ -863,6 +914,8 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
           <div class="ch-info-desc">A planilha usada neste app foi desenvolvida em parceria com o Allan FCL.
           Ela estrutura os dados exportados do FM em abas por posição, com métricas específicas para cada
           função tática e compatíveis com o cálculo AHP.</div>
+          <a href="https://www.mediafire.com/file/8iewmh1973mrz9q/Allan+FCL+-+Moneyball+-+FM2026.rar/file"
+             target="_blank" class="ch-dl">⬇ Baixar a planilha (MediaFire)</a>
         </div>
         <div class="ch-info">
           <div class="ch-info-title">⌨️ Plugin Ctrl+P — Vinteset</div>
