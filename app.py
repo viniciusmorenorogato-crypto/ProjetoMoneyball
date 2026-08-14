@@ -860,8 +860,8 @@ if not st.session_state['ja_calculou'] and 'banco_de_dados_completo' not in st.s
         </div>
         <div class="ch-info">
           <div class="ch-info-title">📊 Planilha Moneyball — Allan FCL</div>
-          <div class="ch-info-desc">A planilha usada neste app foi desenvolvida em parceria com o Allan FCL.
-          Ela estrutura os dados exportados do FM em abas por posição, com métricas específicas para cada
+          <div class="ch-info-desc">A planilha usada neste app foi desenvolvida pelo Allan FCL.
+          Ela estrutura os dados exportados do FM em abas por posição com métricas específicas para cada
           função tática e compatíveis com o cálculo AHP.</div>
         </div>
         <div class="ch-info">
